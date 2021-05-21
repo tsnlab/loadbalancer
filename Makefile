@@ -19,7 +19,7 @@ endif
 
 
 $(APP): $(wildcard src/*.c) | dependencies
-	$(CC) $(CFLAGS) $< -o $@ $(INCLUDES) $(LDFLAGS) $(LDFLAGS_SHARED)
+	$(CC) $(CFLAGS) $? -o $@ $(INCLUDES) $(LDFLAGS) $(LDFLAGS_SHARED)
 
 
 dependencies: .gitmodules
