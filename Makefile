@@ -17,9 +17,22 @@ else
 	CFLAGS += -O3
 endif
 
+SRCS = $(wildcard src/*.c)
+OBJS = $(patsubst src/%.c, obj/%.o, $(SRCS))
+DEPS = $(OBJS:.o=.d)
 
-$(APP): $(wildcard src/*.c) | dependencies
-	$(CC) $(CFLAGS) $? -o $@ $(INCLUDES) $(LDFLAGS) $(LDFLAGS_SHARED)
+
+$(APP): $(OBJS) | dependencies
+	$(CC) $(CFLAGS) $? -o $@ $(LDFLAGS) $(LDFLAGS_SHARED)
+
+obj:
+	mkdir -p obj
+
+obj/%.d : src/%.c | obj
+	$(CC) $(CFLAGS) -M -MT $(@:.d=.o) $< -o $@ $(INCLUDES)
+
+obj/%.o: src/%.c | obj
+	$(CC) $(CFLAGS) -c -o $@ $< $(INCLUDES) $(LDFLAGS)
 
 
 dependencies: .gitmodules
@@ -29,3 +42,7 @@ dependencies: .gitmodules
 clean:
 	make -C lib clean
 	rm $(APP)
+
+ifneq (clean,$(filter clean,$(MAKECMDGOALS)))
+-include $(DEPS)
+endif
