@@ -48,7 +48,7 @@ net_tuple * outbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
     /*
     public ip = 8.8.8.8 -> 0.0.0.0
     pkt = 192.168.1.1:8080 -> 1.1.1.1:443
-    outbound = 1.1.1.1:443 :> 0.0.0.0:xxx
+    outbound = 192.168.1.1:8080 :> 0.0.0.0:xxx
     inbound = 0.0.0.0:xxx :> 192.168.1.1:8080
     */
 
@@ -61,17 +61,16 @@ net_tuple * outbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
     }
 
     // Add map
-    // TODO: Check collision
     uint16_t bindport = get_bind_port(ports, pkt->proto);
 
     outbound = malloc(sizeof(net_tuple));
     assert(outbound != NULL);
 
     outbound->proto = pkt->proto;
-    outbound->srcip = pkt->dstip;
-    outbound->dstip = 0;
-    outbound->srcport = pkt->dstport;
-    outbound->dstport = bindport;
+    outbound->keyip = pkt->keyip;
+    outbound->keyport = pkt->keyport;
+    outbound->valip = 0;
+    outbound->valport = bindport;
 
     sglib_hashed_net_tuple_add(nat_map, outbound);
 
@@ -80,10 +79,10 @@ net_tuple * outbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
     assert(inbound != NULL);
 
     inbound->proto = pkt->proto;
-    inbound->srcip = 0;
-    inbound->dstip = pkt->srcip;
-    inbound->srcport = bindport;
-    inbound->dstport = pkt->srcport;
+    inbound->valip = pkt->keyip;
+    inbound->valport = pkt->keyport;
+    inbound->keyip = 0;
+    inbound->keyport = bindport;
 
     sglib_hashed_net_tuple_add(nat_map, inbound);
 
@@ -93,7 +92,6 @@ net_tuple * outbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
 net_tuple * inbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
     assert(pkt != NULL);
 
-    // FIXME: swap src and dst then find
     net_tuple * inbound = sglib_hashed_net_tuple_find_member(nat_map, pkt);
     return inbound;
 }
