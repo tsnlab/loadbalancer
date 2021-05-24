@@ -1,12 +1,15 @@
 #include "nat.h"
+#include "timeutil.h"
 
-
-unsigned int port_tuple_hash_function(port_tuple * t) {
-    return t->proto * 13 + t->port;
-}
 
 SGLIB_DEFINE_LIST_FUNCTIONS(port_tuple, port_tuple_comparator, next);
 SGLIB_DEFINE_HASHED_CONTAINER_FUNCTIONS(port_tuple, PORT_HASH_SIZE, port_tuple_hash_function);
+
+void make_nat(nat_map * nat) {
+    net_tuple_init(&nat->net_hash);
+    sglib_hashed_port_tuple_init(nat->ports);
+}
+
 
 uint16_t get_bind_port(port_hash ports, uint8_t proto) {
     static uint16_t rotation = 0;
@@ -44,7 +47,7 @@ void release_port(port_hash ports, uint8_t proto, uint16_t port) {
     free(deleted);
 }
 
-net_tuple * outbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
+net_tuple * outbound_map(nat_map * nat, net_tuple * pkt) {
     /*
     public ip = 8.8.8.8 -> 0.0.0.0
     pkt = 192.168.1.1:8080 -> 1.1.1.1:443
@@ -55,43 +58,53 @@ net_tuple * outbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
     assert(pkt != NULL);
 
     // FIXME: Why not found on same value
-    net_tuple * outbound = sglib_hashed_net_tuple_find_member(nat_map, pkt);
-    if(outbound != NULL) {
-        return outbound;
+    net_tuple * tuple = sglib_hashed_net_tuple_cli_find_member(nat->net_hash.cli_hash, pkt);
+    if(tuple != NULL) {
+        return tuple;
     }
 
     // Add map
-    uint16_t bindport = get_bind_port(ports, pkt->proto);
+    uint16_t bindport = get_bind_port(nat->ports, pkt->proto);
 
-    outbound = malloc(sizeof(net_tuple));
-    assert(outbound != NULL);
+    tuple = malloc(sizeof(net_tuple));
+    assert(tuple != NULL);
 
-    outbound->proto = pkt->proto;
-    outbound->keyip = pkt->keyip;
-    outbound->keyport = pkt->keyport;
-    outbound->valip = 0;
-    outbound->valport = bindport;
+    // XXX: Maybe memset is faster??
+    tuple->proto = pkt->proto;
+    tuple->cli_ip = pkt->cli_ip;
+    tuple->cli_port = pkt->cli_port;
+    tuple->masq_ip = 0;
+    tuple->masq_port = bindport;
+    tuple->dst_ip = pkt->dst_ip;
+    tuple->dst_port = pkt->dst_port;
 
-    sglib_hashed_net_tuple_add(nat_map, outbound);
+    net_tuple_add(&nat->net_hash, tuple);
 
-    // Add reverse mapping
-    net_tuple * inbound = malloc(sizeof(net_tuple));
-    assert(inbound != NULL);
-
-    inbound->proto = pkt->proto;
-    inbound->valip = pkt->keyip;
-    inbound->valport = pkt->keyport;
-    inbound->keyip = 0;
-    inbound->keyport = bindport;
-
-    sglib_hashed_net_tuple_add(nat_map, inbound);
-
-    return outbound;
+    return tuple;
 }
 
-net_tuple * inbound_map(net_hash nat_map, port_hash ports, net_tuple * pkt) {
+net_tuple * inbound_map(nat_map * nat, net_tuple * pkt) {
     assert(pkt != NULL);
 
-    net_tuple * inbound = sglib_hashed_net_tuple_find_member(nat_map, pkt);
-    return inbound;
+    net_tuple * tuple = sglib_hashed_net_tuple_masq_find_member(nat->net_hash.masq_hash, pkt);
+    return tuple;
+}
+
+void cleanup_maps(nat_map * nat) {
+
+    struct sglib_hashed_net_tuple_cli_iterator it;
+    net_tuple * tuple;
+
+    struct timeval now, diff;
+    gettimeofday(&now, NULL);
+
+    for(tuple = sglib_hashed_net_tuple_cli_it_init(&it, nat->net_hash.cli_hash); tuple != NULL; tuple = sglib_hashed_net_tuple_cli_it_next(&it)) {
+        timeval_diff(&now, &tuple->last_access, &diff);
+
+        if (diff.tv_sec >= TIMEOUT_SEC) {
+            release_port(nat->ports, tuple->proto, tuple->masq_port);
+        }
+
+        net_tuple_delete(&nat->net_hash, tuple);
+    }
 }

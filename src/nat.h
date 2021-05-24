@@ -3,30 +3,22 @@
 
 #include "net.h"
 
-#define PORT_HASH_SIZE 32
+#define TIMEOUT_SEC 10
 
-typedef struct port_tuple {
-    uint8_t proto;
-    uint16_t port;
-    struct port_tuple * next;
-} port_tuple;
+typedef struct nat_map {
+    net_hash net_hash;
+    port_hash ports;
+} nat_map;
 
-typedef port_tuple *port_hash[PORT_HASH_SIZE];
-unsigned int port_tuple_hash_function(port_tuple * t);
-
-#define port_tuple_comparator(x, y) ( \
-    (x->proto != y->proto) ? x->proto - y->proto : \
-    x->port - y->port \
-)
-
-SGLIB_DEFINE_LIST_PROTOTYPES(port_tuple, port_tuple_comparator, next)
-SGLIB_DEFINE_HASHED_CONTAINER_PROTOTYPES(port_tuple, PORT_HASH_SIZE, port_tuple_hash_function)
+void make_nat(nat_map * nat);
 
 uint16_t get_bind_port(port_hash ports, uint8_t proto);
 void release_port(port_hash ports, uint8_t proto, uint16_t port);
 
 // FIXME: Cannot use const to pkt due to sglib's problem
-net_tuple * outbound_map(net_hash nat_map, port_hash ports, /*const*/ net_tuple * pkt);
-net_tuple * inbound_map(net_hash nat_map, port_hash ports, /*const*/ net_tuple * pkt);
+net_tuple * outbound_map(nat_map * nat, /*const*/ net_tuple * pkt);
+net_tuple * inbound_map(nat_map * nat, /*const*/ net_tuple * pkt);
+
+void cleanup_maps(nat_map * nat);
 
 #endif
