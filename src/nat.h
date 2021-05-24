@@ -6,7 +6,7 @@
 #define TIMEOUT_SEC 10
 
 typedef struct nat_map {
-    net_hash net_hash;
+    net_tuple * net_tuples;
     port_hash ports;
 } nat_map;
 
