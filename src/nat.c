@@ -126,7 +126,7 @@ net_tuple * net_tuple_find_inbound(net_tuple** tuples, net_tuple* target) {
     struct sglib_net_tuple_iterator it;
     net_tuple * tuple;
     for(tuple = sglib_net_tuple_it_init(&it, *tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
-        if(tuple->proto == target->proto && tuple->masq_ip == target->masq_ip && tuple->masq_port == target->masq_port) {
+        if(tuple->proto == target->proto && /* tuple->masq_ip == target->masq_ip && */ tuple->masq_port == target->masq_port) {
             return tuple;
         }
     }
