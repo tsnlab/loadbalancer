@@ -2,6 +2,8 @@ APP = loadbalancer
 
 .PHONY: dependencies clean
 
+CC = gcc
+
 #packetvisor
 INCLUDES += -Ilib/packetvisor/libpv/include
 LDFLAGS_SHARED += -Llib/packetvisor/libpv -lpv
@@ -22,13 +24,13 @@ OBJS = $(patsubst src/%.c, obj/%.o, $(SRCS))
 DEPS = $(OBJS:.o=.d)
 
 
-$(APP): $(OBJS) | dependencies
-	$(CC) $(CFLAGS) $? -o $@ $(LDFLAGS) $(LDFLAGS_SHARED)
+$(APP): $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) $(LDFLAGS_SHARED)
 
-obj:
+obj: dependencies
 	mkdir -p obj
 
-obj/%.d : src/%.c | obj
+obj/%.d: src/%.c | obj
 	$(CC) $(CFLAGS) -M -MT $(@:.d=.o) $< -o $@ $(INCLUDES)
 
 obj/%.o: src/%.c | obj
@@ -41,7 +43,7 @@ dependencies: .gitmodules
 
 clean:
 	make -C lib clean
-	rm $(APP)
+	rm -rf $(APP) obj
 
 ifneq (clean,$(filter clean,$(MAKECMDGOALS)))
 -include $(DEPS)
