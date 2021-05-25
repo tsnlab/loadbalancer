@@ -1,104 +1,124 @@
 #include <stdio.h>
-#include <arpa/inet.h>
+#include <stdlib.h>
+#include <stdint.h>
 
-#include <pv/net/ipv4.h>
+#include <pv/pv.h>
+#include <pv/packet.h>
+#include <pv/nic.h>
+#include <pv/net/ethernet.h>
 
-#include "net.h"
 #include "nat.h"
+#include "packet.h"
+#include "debug.h"
 
-void print_map(nat_map * nat);
-
-struct test {
-    uint32_t src_ip;
-    uint32_t dst_ip;
-    uint16_t src_port;
-    uint16_t dst_port;
-    uint8_t proto;
+enum {
+    NIC_ID_OUTER = 0,
+    NIC_ID_INNER = 1,
 };
 
-int main(int argc, const char *argv[])
-{
+uint64_t outer_mac;
+uint64_t inner_mac;
+uint32_t outer_ip;
+uint32_t inner_ip;
+
+void print_nic_info();
+uint16_t process_pkts(
+    nat_map * nat,
+    struct pv_packet **pkts_outer, uint16_t nrecv_outer,
+    struct pv_packet **pkts_inner, uint16_t nrecv_inner);
+
+int main(int argc, char * argv[]) {
+    int ret = pv_init();
+    if(ret != 0) {
+        fprintf(stderr, "Failed to init pv\n");
+        exit(ret);
+    }
+
+    pv_nic_get_mac(0, &outer_mac);
+    pv_nic_get_mac(1, &inner_mac);
+    pv_nic_get_ipv4(0, &outer_ip);
+    pv_nic_get_ipv4(1, &inner_ip);
+
+    print_nic_info();
+
     nat_map nat;
     make_nat(&nat);
 
-    struct test tests[] = {
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.1"), 31337, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.2"), inet_addr("1.1.1.1"), 31337, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.2"), 31337, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.1"), 8087, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.1"), 8087, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("8.8.8.8"), 31337, 27015, PV_IP_PROTO_UDP},
-        {inet_addr("192.168.0.1"), inet_addr("8.8.4.4"), 31337, 443, PV_IP_PROTO_UDP},
-    };
+    dprintf("Debugging is on\n");
 
-    const int num_of_test = sizeof(tests) / sizeof(tests[0]);
+    struct pv_packet * pkt_buf_outer[1024] = {};
+    const int buf_size_outer = sizeof(pkt_buf_outer) / sizeof(pkt_buf_outer[0]);
 
-    puts("== Outbound mapping checks");
+    struct pv_packet * pkt_buf_inner[1024] = {};
+    const int buf_size_inner = sizeof(pkt_buf_inner) / sizeof(pkt_buf_inner[0]);
 
-    for(int i = 0; i < num_of_test; i += 1) {
-        struct test * test = &tests[i];
-        net_tuple pkt = {
-            .inner_ip = test->src_ip,
-            .outer_ip = test->dst_ip,
-            .inner_port = test->src_port,
-            .outer_port = test->dst_port,
-            .proto = test->proto,
-        };
+    while(1) {
+        uint16_t nrecv_outer = pv_nic_rx_burst(NIC_ID_OUTER, 0, pkt_buf_outer, buf_size_outer);
+        uint16_t nrecv_inner = pv_nic_rx_burst(NIC_ID_INNER, 0, pkt_buf_inner, buf_size_inner);
 
-        net_tuple* tuple = outbound_map(&nat, &pkt);
+        dprintf("Received %d, %d pkts\n", nrecv_outer, nrecv_inner);
 
-        printf("Mapped %02x %08x:%d -> %08x:%d -> %08x:%d\n",
-               pkt.proto,
-               pkt.inner_ip, pkt.inner_port,
-               tuple->masq_ip, tuple->masq_port,
-               pkt.outer_ip, pkt.outer_port);
-    }
-
-    print_map(&nat);
-
-    // Check inbound
-    puts("== Inbound mapping checks");
-    for(int i = 0; i < 10; i += 1) {
-        uint16_t port = 1024 + i;
-
-        net_tuple pkt = {
-            .outer_ip = tests[0].dst_ip,
-            .outer_port = tests[0].dst_port,
-            .masq_ip = 0,
-            .masq_port = port,
-            .proto = tests[0].proto,
-        };
-
-        net_tuple * tuple = inbound_map(&nat, &pkt);
-        if (tuple == NULL) {
-            printf("No mapping for %02x %08x:%d -> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip, pkt.outer_port,
-                   pkt.masq_ip, pkt.masq_port);
-        } else {
-            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip, pkt.outer_port,
-                   pkt.masq_ip, pkt.masq_port,
-                   tuple->inner_ip, tuple->inner_port);
+        if(nrecv_outer + nrecv_inner == 0) {
+            continue;
         }
+
+        process_pkts(&nat, pkt_buf_outer, nrecv_outer, pkt_buf_inner, nrecv_inner);
     }
 
     return 0;
 }
 
-void print_map(nat_map * nat) {
-    struct sglib_net_tuple_iterator it;
-    net_tuple * t;
+void print_nic_info() {
+    printf("Outer: %012lx %d.%d.%d.%d\n",
+           outer_mac,
+           outer_ip >> (8 * 3) & 0xff,
+           outer_ip >> (8 * 2) & 0xff,
+           outer_ip >> (8 * 1) & 0xff,
+           outer_ip >> (8 * 0) & 0xff);
+    printf("Inner: %012lx %d.%d.%d.%d\n",
+           inner_mac,
+           inner_ip >> (8 * 3) & 0xff,
+           inner_ip >> (8 * 2) & 0xff,
+           inner_ip >> (8 * 1) & 0xff,
+           inner_ip >> (8 * 0) & 0xff);
+}
 
-    puts("=== Port mappings ===");
+uint16_t process_pkts(nat_map * nat, struct pv_packet **pkts_outer, uint16_t nrecv_outer, struct pv_packet **pkts_inner, uint16_t nrecv_inner) {
+    uint16_t nsent = 0;
 
-    for(t = sglib_net_tuple_it_init(&it, nat->net_tuples); t != NULL; t = sglib_net_tuple_it_next(&it)) {
-        printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n",
-               t->proto,
-               t->inner_ip, t->inner_port,
-               t->masq_ip, t->masq_port,
-               t->outer_ip, t->outer_port);
+    dprintf("Processing outer\n");
+    for(int i = 0; i < nrecv_outer; i += 1) {
+        struct pv_packet * pkt = pkts_outer[i];
+
+        struct pv_ethernet * ether = (struct pv_ethernet *)pv_packet_data_start(pkt);
+
+        if(is_arp(ether)) {
+            dprintf("Process arp\n");
+            nsent += process_arp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
+        } else if (is_icmp(ether)) {
+            dprintf("Process icmp\n");
+            nsent += process_icmp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
+        } else {
+            dprintf("Not processed\n");
+        }
     }
-    puts("=== Port mappings ===");
+
+    dprintf("Processing inner\n");
+    for(int i = 0; i < nrecv_inner; i += 1) {
+        struct pv_packet * pkt = pkts_inner[i];
+
+        struct pv_ethernet * ether = (struct pv_ethernet *)pv_packet_data_start(pkt);
+
+        if(is_arp(ether)) {
+            dprintf("Process arp\n");
+            nsent += process_arp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
+        } else if (is_icmp(ether)) {
+            dprintf("Process icmp\n");
+            nsent += process_icmp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
+        } else {
+            dprintf("Not processed\n");
+        }
+    }
+
+    return nsent;
 }

@@ -1,0 +1,29 @@
+cores: [0]
+memory:
+  packet_pool: 2048
+  shared_memory: 1024
+log_level: debug
+nics:
+  - dev: 'enp0s8'  # Outer mac first
+    mac: 'c0:ff:ee:c0:ff:ee'
+    ipv4: '192.168.0.11'
+    ipv6: auto
+    rx_queue: 1024
+    tx_queue: 1024
+    promisc: false
+    rx_offloads:
+      - ipv4_cksum
+    tx_offloads:
+      - ipv4_cksum
+
+  - dev: 'enp0s9'  # Inner mac
+    mac: 'de:ca:ff:de:ca:ff'
+    ipv4: '172.16.0.1'
+    ipv6: auto
+    rx_queue: 1024
+    tx_queue: 1024
+    promisc: false
+    rx_offloads:
+      - ipv4_cksum
+    tx_offloads:
+      - ipv4_cksum
