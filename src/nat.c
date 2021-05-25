@@ -71,14 +71,9 @@ net_tuple* outbound_map(nat_map* nat, net_tuple* pkt) {
     tuple = malloc(sizeof(net_tuple));
     assert(tuple != NULL);
 
-    // XXX: Maybe memcpy is faster??
-    tuple->proto = pkt->proto;
-    tuple->inner_ip = pkt->inner_ip;
-    tuple->inner_port = pkt->inner_port;
+    *tuple = *pkt;
     tuple->masq_ip = 0;
     tuple->masq_port = bindport;
-    tuple->outer_ip = pkt->outer_ip;
-    tuple->outer_port = pkt->outer_port;
 
     net_tuple_add(&nat->net_tuples, tuple);
 
