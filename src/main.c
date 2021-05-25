@@ -16,16 +16,13 @@ enum {
     NIC_ID_INNER = 1,
 };
 
-uint64_t outer_mac;
-uint64_t inner_mac;
-uint32_t outer_ip;
-uint32_t inner_ip;
+uint64_t self_macs[2];
+uint32_t self_ips[2];
 
 void print_nic_info();
 uint16_t process_pkts(
-    nat_map * nat,
-    struct pv_packet **pkts_outer, uint16_t nrecv_outer,
-    struct pv_packet **pkts_inner, uint16_t nrecv_inner);
+    nat_map * nat, int nic_id,
+    struct pv_packet **pkts_outer, uint16_t nrecv_outer);
 
 int main(int argc, char * argv[]) {
     int ret = pv_init();
@@ -34,10 +31,10 @@ int main(int argc, char * argv[]) {
         exit(ret);
     }
 
-    pv_nic_get_mac(0, &outer_mac);
-    pv_nic_get_mac(1, &inner_mac);
-    pv_nic_get_ipv4(0, &outer_ip);
-    pv_nic_get_ipv4(1, &inner_ip);
+    for(int i = 0; i < 2; i += 1) {
+        pv_nic_get_mac(i, &self_macs[i]);
+        pv_nic_get_ipv4(i, &self_ips[i]);
+    }
 
     print_nic_info();
 
@@ -46,75 +43,52 @@ int main(int argc, char * argv[]) {
 
     dprintf("Debugging is on\n");
 
-    struct pv_packet * pkt_buf_outer[1024] = {};
-    const int buf_size_outer = sizeof(pkt_buf_outer) / sizeof(pkt_buf_outer[0]);
-
-    struct pv_packet * pkt_buf_inner[1024] = {};
-    const int buf_size_inner = sizeof(pkt_buf_inner) / sizeof(pkt_buf_inner[0]);
+    struct pv_packet * pkt_buf[1024] = {};
+    const int buf_size = sizeof(pkt_buf) / sizeof(pkt_buf[0]);
 
     while(1) {
-        uint16_t nrecv_outer = pv_nic_rx_burst(NIC_ID_OUTER, 0, pkt_buf_outer, buf_size_outer);
-        uint16_t nrecv_inner = pv_nic_rx_burst(NIC_ID_INNER, 0, pkt_buf_inner, buf_size_inner);
+        for(int nic_id = 0; nic_id < 2; nic_id += 1) {
+            uint16_t nrecv = pv_nic_rx_burst(nic_id, 0, pkt_buf, buf_size);
 
-        dprintf("Received %d, %d pkts\n", nrecv_outer, nrecv_inner);
+            if(nrecv == 0) {
+                continue;
+            }
 
-        if(nrecv_outer + nrecv_inner == 0) {
-            continue;
+            dprintf("Received %d pkts from NIC %d\n", nrecv, nic_id);
+            process_pkts(&nat, nic_id, pkt_buf, nrecv);
         }
-
-        process_pkts(&nat, pkt_buf_outer, nrecv_outer, pkt_buf_inner, nrecv_inner);
     }
 
     return 0;
 }
 
 void print_nic_info() {
-    printf("Outer: %012lx %d.%d.%d.%d\n",
-           outer_mac,
-           outer_ip >> (8 * 3) & 0xff,
-           outer_ip >> (8 * 2) & 0xff,
-           outer_ip >> (8 * 1) & 0xff,
-           outer_ip >> (8 * 0) & 0xff);
-    printf("Inner: %012lx %d.%d.%d.%d\n",
-           inner_mac,
-           inner_ip >> (8 * 3) & 0xff,
-           inner_ip >> (8 * 2) & 0xff,
-           inner_ip >> (8 * 1) & 0xff,
-           inner_ip >> (8 * 0) & 0xff);
+    for(int i = 0; i < 2; i += 1) {
+        printf("Nic %d: %012lx %d.%d.%d.%d\n",
+               i,
+               self_macs[i],
+               self_ips[i] >> (8 * 3) & 0xff,
+               self_ips[i] >> (8 * 2) & 0xff,
+               self_ips[i] >> (8 * 1) & 0xff,
+               self_ips[i] >> (8 * 0) & 0xff);
+    }
 }
 
-uint16_t process_pkts(nat_map * nat, struct pv_packet **pkts_outer, uint16_t nrecv_outer, struct pv_packet **pkts_inner, uint16_t nrecv_inner) {
+uint16_t process_pkts(nat_map * nat, int nic_id, struct pv_packet **pkts, uint16_t nrecv) {
     uint16_t nsent = 0;
 
-    dprintf("Processing outer\n");
-    for(int i = 0; i < nrecv_outer; i += 1) {
-        struct pv_packet * pkt = pkts_outer[i];
+    dprintf("Processing\n");
+    for(int i = 0; i < nrecv; i += 1) {
+        struct pv_packet * pkt = pkts[i];
 
         struct pv_ethernet * ether = (struct pv_ethernet *)pv_packet_data_start(pkt);
 
         if(is_arp(ether)) {
             dprintf("Process arp\n");
-            nsent += process_arp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
+            nsent += process_arp(pkt, nic_id, self_macs[nic_id], self_ips[nic_id]);
         } else if (is_icmp(ether)) {
             dprintf("Process icmp\n");
-            nsent += process_icmp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
-        } else {
-            dprintf("Not processed\n");
-        }
-    }
-
-    dprintf("Processing inner\n");
-    for(int i = 0; i < nrecv_inner; i += 1) {
-        struct pv_packet * pkt = pkts_inner[i];
-
-        struct pv_ethernet * ether = (struct pv_ethernet *)pv_packet_data_start(pkt);
-
-        if(is_arp(ether)) {
-            dprintf("Process arp\n");
-            nsent += process_arp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
-        } else if (is_icmp(ether)) {
-            dprintf("Process icmp\n");
-            nsent += process_icmp(pkt, NIC_ID_OUTER, outer_mac, outer_ip);
+            nsent += process_icmp(pkt, nic_id, self_macs[nic_id], self_ips[nic_id]);
         } else {
             dprintf("Not processed\n");
         }

@@ -41,7 +41,7 @@ uint16_t process_arp(struct pv_packet * pkt, uint16_t nicid, uint64_t mac, uint3
 
     arp->opcode = PV_ARP_OPCODE_ARP_REPLY;
     arp->dst_hw = arp->src_hw;
-    arp->dst_proto = arp->dst_proto;
+    arp->dst_proto = arp->src_proto;
     arp->src_hw = mac;
     arp->src_proto = ip;
 
