@@ -11,10 +11,12 @@ LDFLAGS_SHARED += -Llib/packetvisor/libpv -lpv
 #sglib
 INCLUDES += -Ilib/sglib
 
-CFLAGS += -Wall -Wl,-rpath=.
+CFLAGS += -Wall -Wl,-rpath=lib/packetvisor/libpv
+
+DEBUG ?= 1
 
 ifeq ($(DEBUG), 1)
-	CFLAGS += -O0 -g
+	CFLAGS += -O0 -g -DDEBUG=1
 else
 	CFLAGS += -O3
 endif
