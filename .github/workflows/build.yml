@@ -26,5 +26,6 @@ jobs:
         uses: actions/checkout@master
       - name: build
         run: |
-          cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
-          cmake --build build
+            git submodule update --init --recursive
+            cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
+            cmake --build build
