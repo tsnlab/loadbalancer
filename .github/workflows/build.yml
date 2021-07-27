@@ -26,14 +26,24 @@ jobs:
         uses: actions/checkout@master
         with:
             submodules: recursive
-      - name: Install dpdk
+      - name: Cache DPDK
+        id: cache-dpdk
+        uses: actions/cache@v2
+        with:
+            path: dpdk-stable-20.11.2
+            key: ${{ runner.os }}-dpdk-stable-20.11.2
+
+      - name: Build dpdk
+        if: steps.cache-dpdk.outputs.cache-hit != 'true'
         run: |
             curl -o dpdk.tar.xz -L https://fast.dpdk.org/rel/dpdk-20.11.2.tar.xz
             tar -xf dpdk.tar.xz
             pushd dpdk-stable-20.11.2
             meson build
-            ninja -C build install
             popd
+      - name: Install dpdk
+        run: cd dpdk-stable-20.11.2 && sudo ninja -C build install
+
       - name: build
         run: |
             cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
