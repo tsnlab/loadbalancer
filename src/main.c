@@ -1,12 +1,12 @@
-#include <stdio.h>
 #include <arpa/inet.h>
-
 #include <pv/net/ipv4.h>
 
-#include "net.h"
-#include "nat.h"
+#include <stdio.h>
 
-void print_map(nat_map * nat);
+#include "nat.h"
+#include "net.h"
+
+void print_map(nat_map* nat);
 
 struct test {
     uint32_t src_ip;
@@ -16,8 +16,7 @@ struct test {
     uint8_t proto;
 };
 
-int main(int argc, const char *argv[])
-{
+int main(int argc, const char* argv[]) {
     nat_map nat;
     make_nat(&nat);
 
@@ -35,8 +34,8 @@ int main(int argc, const char *argv[])
 
     puts("== Outbound mapping checks");
 
-    for(int i = 0; i < num_of_test; i += 1) {
-        struct test * test = &tests[i];
+    for (int i = 0; i < num_of_test; i += 1) {
+        struct test* test = &tests[i];
         net_tuple pkt = {
             .inner_ip = test->src_ip,
             .outer_ip = test->dst_ip,
@@ -47,18 +46,15 @@ int main(int argc, const char *argv[])
 
         net_tuple* tuple = outbound_map(&nat, &pkt);
 
-        printf("Mapped %02x %08x:%d -> %08x:%d -> %08x:%d\n",
-               pkt.proto,
-               pkt.inner_ip, pkt.inner_port,
-               tuple->masq_ip, tuple->masq_port,
-               pkt.outer_ip, pkt.outer_port);
+        printf("Mapped %02x %08x:%d -> %08x:%d -> %08x:%d\n", pkt.proto, pkt.inner_ip, pkt.inner_port, tuple->masq_ip,
+               tuple->masq_port, pkt.outer_ip, pkt.outer_port);
     }
 
     print_map(&nat);
 
     // Check inbound
     puts("== Inbound mapping checks");
-    for(int i = 0; i < 10; i += 1) {
+    for (int i = 0; i < 10; i += 1) {
         uint16_t port = 1024 + i;
 
         net_tuple pkt = {
@@ -69,35 +65,27 @@ int main(int argc, const char *argv[])
             .proto = tests[0].proto,
         };
 
-        net_tuple * tuple = inbound_map(&nat, &pkt);
+        net_tuple* tuple = inbound_map(&nat, &pkt);
         if (tuple == NULL) {
-            printf("No mapping for %02x %08x:%d -> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip, pkt.outer_port,
-                   pkt.masq_ip, pkt.masq_port);
+            printf("No mapping for %02x %08x:%d -> %08x:%d\n", pkt.proto, pkt.outer_ip, pkt.outer_port, pkt.masq_ip,
+                   pkt.masq_port);
         } else {
-            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip, pkt.outer_port,
-                   pkt.masq_ip, pkt.masq_port,
-                   tuple->inner_ip, tuple->inner_port);
+            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n", pkt.proto, pkt.outer_ip, pkt.outer_port,
+                   pkt.masq_ip, pkt.masq_port, tuple->inner_ip, tuple->inner_port);
         }
     }
 
     return 0;
 }
 
-void print_map(nat_map * nat) {
+void print_map(nat_map* nat) {
     struct sglib_net_tuple_iterator it;
-    net_tuple * t;
+    net_tuple* t;
 
     puts("=== Port mappings ===");
 
-    for(t = sglib_net_tuple_it_init(&it, nat->net_tuples); t != NULL; t = sglib_net_tuple_it_next(&it)) {
-        printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n",
-               t->proto,
-               t->inner_ip, t->inner_port,
-               t->masq_ip, t->masq_port,
+    for (t = sglib_net_tuple_it_init(&it, nat->net_tuples); t != NULL; t = sglib_net_tuple_it_next(&it)) {
+        printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n", t->proto, t->inner_ip, t->inner_port, t->masq_ip, t->masq_port,
                t->outer_ip, t->outer_port);
     }
     puts("=== Port mappings ===");

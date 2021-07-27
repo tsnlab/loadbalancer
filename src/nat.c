@@ -1,12 +1,13 @@
 #include "nat.h"
+
 #include "timeutil.h"
 
 SGLIB_DEFINE_LIST_FUNCTIONS(port_tuple, port_tuple_comparator, next);
 SGLIB_DEFINE_HASHED_CONTAINER_FUNCTIONS(port_tuple, PORT_HASH_SIZE, port_tuple_hash_function);
 
-net_tuple * net_tuple_find_outbound(net_tuple** tuples, net_tuple* target);
+net_tuple* net_tuple_find_outbound(net_tuple** tuples, net_tuple* target);
 
-net_tuple * net_tuple_find_inbound(net_tuple** tuples, net_tuple* target);
+net_tuple* net_tuple_find_inbound(net_tuple** tuples, net_tuple* target);
 
 void make_nat(nat_map* nat) {
     nat->net_tuples = NULL;
@@ -27,7 +28,7 @@ uint16_t get_bind_port(port_hash ports, uint8_t proto) {
     do {
         t.port = (rotation++ % window) + start;
         found = sglib_hashed_port_tuple_find_member(ports, &t);
-    } while(found);
+    } while (found);
 
     found = malloc(sizeof(*found));
     assert(found != NULL);
@@ -61,7 +62,7 @@ net_tuple* outbound_map(nat_map* nat, net_tuple* pkt) {
 
     // FIXME: Why not found on same value
     net_tuple* tuple = net_tuple_find_outbound(&nat->net_tuples, pkt);
-    if(tuple != NULL) {
+    if (tuple != NULL) {
         return tuple;
     }
 
@@ -95,20 +96,21 @@ void cleanup_maps(nat_map* nat) {
     struct timeval now, diff;
     gettimeofday(&now, NULL);
 
-    for(tuple = sglib_net_tuple_it_init(&it, nat->net_tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
+    for (tuple = sglib_net_tuple_it_init(&it, nat->net_tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
         timeval_diff(&tuple->last_access, &now, &diff);
-        if(diff.tv_sec >= TIMEOUT_SEC) {
+        if (diff.tv_sec >= TIMEOUT_SEC) {
             sglib_net_tuple_delete(&nat->net_tuples, tuple);
         }
     }
 }
 
-net_tuple * net_tuple_find_outbound(net_tuple** tuples, net_tuple* target) {
+net_tuple* net_tuple_find_outbound(net_tuple** tuples, net_tuple* target) {
 
     struct sglib_net_tuple_iterator it;
     net_tuple* tuple;
-    for(tuple = sglib_net_tuple_it_init(&it, *tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
-        if(tuple->proto == target->proto && tuple->inner_ip == target->inner_ip && tuple->inner_port == target->inner_port) {
+    for (tuple = sglib_net_tuple_it_init(&it, *tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
+        if (tuple->proto == target->proto && tuple->inner_ip == target->inner_ip &&
+            tuple->inner_port == target->inner_port) {
             return tuple;
         }
     }
@@ -116,12 +118,13 @@ net_tuple * net_tuple_find_outbound(net_tuple** tuples, net_tuple* target) {
     return NULL;
 }
 
-net_tuple * net_tuple_find_inbound(net_tuple** tuples, net_tuple* target) {
+net_tuple* net_tuple_find_inbound(net_tuple** tuples, net_tuple* target) {
 
     struct sglib_net_tuple_iterator it;
-    net_tuple * tuple;
-    for(tuple = sglib_net_tuple_it_init(&it, *tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
-        if(tuple->proto == target->proto && /* tuple->masq_ip == target->masq_ip && */ tuple->masq_port == target->masq_port) {
+    net_tuple* tuple;
+    for (tuple = sglib_net_tuple_it_init(&it, *tuples); tuple != NULL; tuple = sglib_net_tuple_it_next(&it)) {
+        if (tuple->proto == target->proto &&
+            /* tuple->masq_ip == target->masq_ip && */ tuple->masq_port == target->masq_port) {
             return tuple;
         }
     }
