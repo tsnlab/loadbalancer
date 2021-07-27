@@ -14,12 +14,18 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${PRIVATE_INCLUDE_DIRECTORIES
 target_include_directories(${PROJECT_NAME} PUBLIC lib/sglib/)
 target_include_directories(${PROJECT_NAME} PUBLIC lib/packetvisor/include/)
 # target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/lib/packetvisor/libpv.a)
+
+set(LIBPV_PATH "${CMAKE_SOURCE_DIR}/lib/packetvisor/libpv.a")
+
+add_custom_command(
+    OUTPUT ${LIBPV_PATH}
+    COMMAND make
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/packetvisor
+    )
 
 add_custom_target(
     libpv
-    COMMAND make
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/packetvisor
+    DEPENDS ${LIBPV_PATH}
 )
 
 add_dependencies(
@@ -27,6 +33,7 @@ add_dependencies(
     libpv
 )
 
+target_link_libraries(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/lib/packetvisor/libpv.a)
 
 install(
     TARGETS ${PROJECT_NAME}
