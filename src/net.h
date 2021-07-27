@@ -31,20 +31,16 @@ typedef port_tuple* port_hash[PORT_HASH_SIZE];
 
 unsigned int port_tuple_hash_function(port_tuple* t);
 
-#define net_tuple_comparator(x, y) ( \
-    ((x)->inner_ip != (y)->inner_ip) ? ((x)->inner_ip - (y)->inner_ip) : \
-    ((x)->inner_port != (y)->inner_port) ? ((x)->inner_port - (y)->inner_port) : \
-    ((x)->masq_ip != (y)->masq_ip) ? ((x)->masq_ip - (y)->masq_ip) : \
-    ((x)->masq_port != (y)->masq_port) ? ((x)->masq_port - (y)->masq_port) : \
-    ((x)->outer_ip != (y)->outer_ip) ? ((x)->outer_ip - (y)->outer_ip) : \
-    ((x)->outer_port != (y)->outer_port) ? ((x)->outer_port - (y)->outer_port) : \
-    ((x)->proto -= (y)->proto) \
-)
+#define net_tuple_comparator(x, y)                                                \
+    (((x)->inner_ip != (y)->inner_ip)       ? ((x)->inner_ip - (y)->inner_ip)     \
+     : ((x)->inner_port != (y)->inner_port) ? ((x)->inner_port - (y)->inner_port) \
+     : ((x)->masq_ip != (y)->masq_ip)       ? ((x)->masq_ip - (y)->masq_ip)       \
+     : ((x)->masq_port != (y)->masq_port)   ? ((x)->masq_port - (y)->masq_port)   \
+     : ((x)->outer_ip != (y)->outer_ip)     ? ((x)->outer_ip - (y)->outer_ip)     \
+     : ((x)->outer_port != (y)->outer_port) ? ((x)->outer_port - (y)->outer_port) \
+                                            : ((x)->proto -= (y)->proto))
 
-#define port_tuple_comparator(x, y) ( \
-    (x->proto != y->proto) ? x->proto - y->proto : \
-    x->port - y->port \
-)
+#define port_tuple_comparator(x, y) ((x->proto != y->proto) ? x->proto - y->proto : x->port - y->port)
 
 SGLIB_DEFINE_LIST_PROTOTYPES(net_tuple, net_tuple_comparator, next)
 

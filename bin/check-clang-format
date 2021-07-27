@@ -2,10 +2,10 @@
 
 set -eo pipefail
 
-files=$(find src include -type f \( -name '*.c' -or -name '*.h' \))
+files=$(find src -type f \( -name '*.c' -or -name '*.h' \))
 result=0
 for fname in $files; do
-    if ! diff --color -u "$fname" <(clang-format "$fname"); then
+    if ! diff --color -u "$fname" <(clang-format-12 "$fname"); then
         result=1
     fi
 done

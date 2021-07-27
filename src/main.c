@@ -46,8 +46,14 @@ int main(int argc, const char* argv[]) {
 
         net_tuple* tuple = outbound_map(&nat, &pkt);
 
-        printf("Mapped %02x %08x:%d -> %08x:%d -> %08x:%d\n", pkt.proto, pkt.inner_ip, pkt.inner_port, tuple->masq_ip,
-               tuple->masq_port, pkt.outer_ip, pkt.outer_port);
+        printf("Mapped %02x %08x:%d -> %08x:%d -> %08x:%d\n",
+               pkt.proto,
+               pkt.inner_ip,
+               pkt.inner_port,
+               tuple->masq_ip,
+               tuple->masq_port,
+               pkt.outer_ip,
+               pkt.outer_port);
     }
 
     print_map(&nat);
@@ -67,11 +73,21 @@ int main(int argc, const char* argv[]) {
 
         net_tuple* tuple = inbound_map(&nat, &pkt);
         if (tuple == NULL) {
-            printf("No mapping for %02x %08x:%d -> %08x:%d\n", pkt.proto, pkt.outer_ip, pkt.outer_port, pkt.masq_ip,
+            printf("No mapping for %02x %08x:%d -> %08x:%d\n",
+                   pkt.proto,
+                   pkt.outer_ip,
+                   pkt.outer_port,
+                   pkt.masq_ip,
                    pkt.masq_port);
         } else {
-            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n", pkt.proto, pkt.outer_ip, pkt.outer_port,
-                   pkt.masq_ip, pkt.masq_port, tuple->inner_ip, tuple->inner_port);
+            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n",
+                   pkt.proto,
+                   pkt.outer_ip,
+                   pkt.outer_port,
+                   pkt.masq_ip,
+                   pkt.masq_port,
+                   tuple->inner_ip,
+                   tuple->inner_port);
         }
     }
 
@@ -85,8 +101,14 @@ void print_map(nat_map* nat) {
     puts("=== Port mappings ===");
 
     for (t = sglib_net_tuple_it_init(&it, nat->net_tuples); t != NULL; t = sglib_net_tuple_it_next(&it)) {
-        printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n", t->proto, t->inner_ip, t->inner_port, t->masq_ip, t->masq_port,
-               t->outer_ip, t->outer_port);
+        printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n",
+               t->proto,
+               t->inner_ip,
+               t->inner_port,
+               t->masq_ip,
+               t->masq_port,
+               t->outer_ip,
+               t->outer_port);
     }
     puts("=== Port mappings ===");
 }
