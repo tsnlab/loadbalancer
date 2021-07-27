@@ -1,6 +1,6 @@
 [submodule "lib/sglib"]
 	path = lib/sglib
-	url = //tsnlab/sglib
+	url = git@github.com:tsnlab/sglib
 [submodule "lib/packetvisor"]
 	path = lib/packetvisor
-	url = //semihlab/packetvisor
+	url = git@github.com:semihlab/packetvisor
