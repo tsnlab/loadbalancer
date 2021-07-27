@@ -24,8 +24,9 @@ jobs:
         run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
       - name: Checkout
         uses: actions/checkout@master
+        with:
+            submodules: recursive
       - name: build
         run: |
-            git submodule update --init --recursive
             cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
             cmake --build build
