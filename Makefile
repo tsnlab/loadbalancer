@@ -5,8 +5,8 @@ APP = loadbalancer
 CC = gcc
 
 #packetvisor
-INCLUDES += -Ilib/packetvisor/libpv/include
-LDFLAGS_SHARED += -Llib/packetvisor/libpv -lpv
+INCLUDES += -Ilib/packetvisor/include
+LDFLAGS_SHARED += -Llib/packetvisor/ -lpv
 
 #sglib
 INCLUDES += -Ilib/sglib
