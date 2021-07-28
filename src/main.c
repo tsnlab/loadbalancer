@@ -95,12 +95,14 @@ int main(int argc, const char* argv[]) {
 }
 
 void print_map(nat_map* nat) {
-    struct sglib_net_tuple_iterator it;
     net_tuple* t;
+    struct list_iterator iter;
 
     puts("=== Port mappings ===");
 
-    for (t = sglib_net_tuple_it_init(&it, nat->net_tuples); t != NULL; t = sglib_net_tuple_it_next(&it)) {
+    list_iterator_init(&iter, nat->net_tuples);
+    while (list_iterator_has_next(&iter)) {
+        t = (net_tuple*)list_iterator_next(&iter);
         printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n",
                t->proto,
                t->inner_ip,
