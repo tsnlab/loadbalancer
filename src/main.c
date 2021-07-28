@@ -91,6 +91,43 @@ int main(int argc, const char* argv[]) {
         }
     }
 
+    puts("== Loadbalancing checks ==");
+    const uint16_t lb_port = 0xbeef;
+    port_tuple ptuple = {PV_IP_PROTO_UDP, lb_port};
+    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.100"), 1111);
+    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.101"), 2222);
+    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.102"), 3333);
+    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.103"), 4444);
+    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.104"), 5555);
+    for (int i = 0; i < 10; i += 1) {
+        net_tuple pkt = {
+            .outer_ip = inet_addr("99.99.99.99"),
+            .outer_port = 31337 + i % 5,
+            .masq_ip = 0,
+            .masq_port = lb_port,
+            .proto = PV_IP_PROTO_UDP,
+        };
+
+        net_tuple* tuple = inbound_map(&nat, &pkt);
+        if (tuple == NULL) {
+            printf("No mapping for %02x %08x:%d -> %08x:%d\n",
+                   pkt.proto,
+                   pkt.outer_ip,
+                   pkt.outer_port,
+                   pkt.masq_ip,
+                   pkt.masq_port);
+        } else {
+            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n",
+                   pkt.proto,
+                   pkt.outer_ip,
+                   pkt.outer_port,
+                   pkt.masq_ip,
+                   pkt.masq_port,
+                   tuple->inner_ip,
+                   tuple->inner_port);
+        }
+    }
+
     return 0;
 }
 
