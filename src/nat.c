@@ -1,10 +1,11 @@
-#include <assert.h>
 
 #include "nat.h"
-#include "timeutil.h"
 
-#include <unistd.h>
+#include <assert.h>
 #include <time.h>
+#include <unistd.h>
+
+#include "timeutil.h"
 
 net_tuple* net_tuple_find_outbound(net_tuple_list tuples, const net_tuple* target);
 
@@ -108,7 +109,6 @@ net_tuple* outbound_map(nat_map* nat, const net_tuple* pkt) {
 
     assert(pkt != NULL);
 
-    // FIXME: Why not found on same value
     net_tuple* tuple = net_tuple_find_outbound(nat->net_tuples, pkt);
     if (tuple != NULL) {
         return tuple;
@@ -183,7 +183,8 @@ net_tuple* net_tuple_find_outbound(net_tuple_list tuples, const net_tuple* targe
     list_iterator_init(&iter, tuples);
     while (list_iterator_has_next(&iter)) {
         net_tuple* tuple = (net_tuple*)list_iterator_next(&iter);
-        if (tuple->proto == target->proto && tuple->inner_ip == target->inner_ip && tuple->inner_port == target->inner_port) {
+        if (tuple->proto == target->proto && tuple->inner_ip == target->inner_ip &&
+            tuple->inner_port == target->inner_port) {
             return tuple;
         }
     }
@@ -196,10 +197,8 @@ net_tuple* net_tuple_find_inbound(net_tuple_list tuples, const net_tuple* target
     list_iterator_init(&iter, tuples);
     while (list_iterator_has_next(&iter)) {
         net_tuple* tuple = (net_tuple*)list_iterator_next(&iter);
-        if (tuple->proto == target->proto &&
-            tuple->outer_ip == target->outer_ip &&
-            tuple->outer_port == target->outer_port &&
-            tuple->masq_ip == target->masq_ip &&
+        if (tuple->proto == target->proto && tuple->outer_ip == target->outer_ip &&
+            tuple->outer_port == target->outer_port && tuple->masq_ip == target->masq_ip &&
             tuple->masq_port == target->masq_port) {
             return tuple;
         }

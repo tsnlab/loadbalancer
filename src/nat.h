@@ -1,8 +1,8 @@
 #ifndef __NAT_H__
 #define __NAT_H__
 
-#include <cl/map.h>
 #include <cl/list.h>
+#include <cl/map.h>
 
 #include "net.h"
 
