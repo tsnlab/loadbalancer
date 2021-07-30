@@ -24,11 +24,8 @@ add_custom_command(
     )
 add_custom_target(
     pypv
+    COMMAND cp ${PYPV_PATH} ${CMAKE_BINARY_DIR}/pv
     DEPENDS ${PYPV_PATH}
-)
-file(
-    COPY ${PYPV_PATH}
-    DESTINATION ${CMAKE_BINARY_DIR}
 )
 
 set(LIBCL_PATH "${CMAKE_SOURCE_DIR}/lib/libcollection/libcl.a")
