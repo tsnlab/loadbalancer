@@ -1,153 +1,161 @@
 #include <arpa/inet.h>
-#include <pv/net/ipv4.h>
+#include <pv/config.h>
+#include <pv/net/ethernet.h>
+#include <pv/net/ipv6.h>
+#include <pv/net/vlan.h>
+#include <pv/nic.h>
+#include <pv/pv.h>
 
+#include <cl/map.h>
+#include <cl/list.h>
+
+#include <assert.h>
 #include <stdio.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+#include <time.h>
 
 #include "nat.h"
 #include "net.h"
 
 void print_map(nat_map* nat);
 
-struct test {
-    uint32_t src_ip;
-    uint32_t dst_ip;
-    uint16_t src_port;
-    uint16_t dst_port;
-    uint8_t proto;
+bool running = true;
+uint64_t mymac;
+
+struct schedule {
+    uint32_t window; // in ns
+    uint32_t prios;  // 0 = BE, 1 = prio0, so on
 };
 
+static uint32_t map_prio(int prio) {
+    switch (prio) {
+    case -1:
+        return 0;
+    default:
+        return 1 << (prio + 1);
+    }
+}
+
+struct map* prio_queue;
+struct list* schedules;
+
+void process(struct pv_packet* pkt);
+void enqueue(struct pv_packet* pkt, int prio);
+
+void process_queue();
+
+static void handle_signal(int signo) {
+    switch (signo) {
+    case SIGINT:
+        printf("SIGINT\n");
+        break;
+    case SIGTERM:
+        printf("SIGINT\n");
+        break;
+    }
+    running = false;
+}
+
+static struct pv_ethernet* get_ether(struct pv_packet* pkt) {
+    return (struct pv_ethernet*)(pkt->buffer + pkt->start);
+}
+
 int main(int argc, const char* argv[]) {
-    nat_map nat;
-    make_nat(&nat);
+    if(pv_init() != 0) {
+        fprintf(stderr, "Cannot initialize packetvisor\n");
+        exit(1);
+    }
 
-    struct test tests[] = {
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.1"), 31337, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.2"), inet_addr("1.1.1.1"), 31337, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.2"), 31337, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.1"), 8087, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("1.1.1.1"), 8087, 443, PV_IP_PROTO_TCP},
-        {inet_addr("192.168.0.1"), inet_addr("8.8.8.8"), 31337, 27015, PV_IP_PROTO_UDP},
-        {inet_addr("192.168.0.1"), inet_addr("8.8.4.4"), 31337, 443, PV_IP_PROTO_UDP},
+    struct pv_packet* pkts[512];
+    const int max_pkts = sizeof(pkts) / sizeof(pkts[0]);
+
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
+
+
+    // Setup prio map
+    prio_queue = map_create(0x1000, uint16_hash, NULL);
+    for (uint16_t prio = -1; prio <= 0x0fff; prio += 1) {
+        struct list* list = list_create(NULL);
+        map_put(prio_queue, from_u16(prio), list);
+    }
+
+    // Setup schedules
+    schedules = list_create(NULL);
+    // XXX: Use extended structure to store priorities
+    // 0 = BE, 1 = VLAN prio 0
+    struct schedule schs[] = {
+        {.window = 300000, .prios = map_prio(3)},
+        {.window = 300000, .prios = map_prio(3) | map_prio(2)},
+        {.window = 400000, .prios = map_prio(-1)},
     };
-
-    const int num_of_test = sizeof(tests) / sizeof(tests[0]);
-
-    puts("== Outbound mapping checks");
-
-    for (int i = 0; i < num_of_test; i += 1) {
-        struct test* test = &tests[i];
-        net_tuple pkt = {
-            .inner_ip = test->src_ip,
-            .outer_ip = test->dst_ip,
-            .inner_port = test->src_port,
-            .outer_port = test->dst_port,
-            .proto = test->proto,
-        };
-
-        net_tuple* tuple = outbound_map(&nat, &pkt);
-
-        printf("Mapped %02x %08x:%d -> %08x:%d -> %08x:%d\n",
-               pkt.proto,
-               pkt.inner_ip,
-               pkt.inner_port,
-               tuple->masq_ip,
-               tuple->masq_port,
-               pkt.outer_ip,
-               pkt.outer_port);
+    const int schs_len = sizeof(schs) / sizeof(schs[0]);
+    for(int i = 0; i < schs_len; i += 1) {
+        struct schedule* sch = malloc(sizeof(struct schedule));
+        memcpy((void*)sch, (void*)&schs[i], sizeof(struct schedule));
+        list_add(schedules, sch);
     }
 
-    print_map(&nat);
+    // Get NIC's mac
+    mymac = pv_nic_get_mac(0);
 
-    // Check inbound
-    puts("== Inbound mapping checks");
-    for (int i = 0; i < 10; i += 1) {
-        uint16_t port = 1024 + i;
+    while(running) {
+        uint16_t count = pv_nic_rx_burst(0, 0, pkts, max_pkts);
 
-        net_tuple pkt = {
-            .outer_ip = tests[0].dst_ip,
-            .outer_port = tests[0].dst_port,
-            .masq_ip = 0,
-            .masq_port = port,
-            .proto = tests[0].proto,
-        };
-
-        net_tuple* tuple = inbound_map(&nat, &pkt);
-        if (tuple == NULL) {
-            printf("No mapping for %02x %08x:%d -> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip,
-                   pkt.outer_port,
-                   pkt.masq_ip,
-                   pkt.masq_port);
-        } else {
-            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip,
-                   pkt.outer_port,
-                   pkt.masq_ip,
-                   pkt.masq_port,
-                   tuple->inner_ip,
-                   tuple->inner_port);
+        if(count == 0) {
+            // TODO: Check if queue is empty
+            usleep(100);
+            continue;
         }
-    }
 
-    puts("== Loadbalancing checks ==");
-    const uint16_t lb_port = 0xbeef;
-    port_tuple ptuple = {PV_IP_PROTO_UDP, lb_port};
-    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.100"), 1111);
-    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.101"), 2222);
-    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.102"), 3333);
-    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.103"), 4444);
-    add_port_forward(&nat, &ptuple, inet_addr("192.168.1.104"), 5555);
-    for (int i = 0; i < 10; i += 1) {
-        net_tuple pkt = {
-            .outer_ip = inet_addr("99.99.99.99"),
-            .outer_port = 31337 + i % 5,
-            .masq_ip = 0,
-            .masq_port = lb_port,
-            .proto = PV_IP_PROTO_UDP,
-        };
-
-        net_tuple* tuple = inbound_map(&nat, &pkt);
-        if (tuple == NULL) {
-            printf("No mapping for %02x %08x:%d -> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip,
-                   pkt.outer_port,
-                   pkt.masq_ip,
-                   pkt.masq_port);
-        } else {
-            printf("mapping for %02x %08x:%d -> %08x:%d --> %08x:%d\n",
-                   pkt.proto,
-                   pkt.outer_ip,
-                   pkt.outer_port,
-                   pkt.masq_ip,
-                   pkt.masq_port,
-                   tuple->inner_ip,
-                   tuple->inner_port);
+        for(uint16_t i = 0; i < count; i++) {
+            process(pkts[i]);
         }
+
+        process_queue();
     }
 
+    pv_finalize();
     return 0;
 }
 
-void print_map(nat_map* nat) {
-    net_tuple* t;
-    struct list_iterator iter;
+void process(struct pv_packet* pkt) {
+    struct pv_ethernet* ether = get_ether(pkt);
 
-    puts("=== Port mappings ===");
-
-    list_iterator_init(&iter, nat->net_tuples);
-    while (list_iterator_has_next(&iter)) {
-        t = (net_tuple*)list_iterator_next(&iter);
-        printf("%02x %08x:%d -> %08x:%d -> %08x:%d\n",
-               t->proto,
-               t->inner_ip,
-               t->inner_port,
-               t->masq_ip,
-               t->masq_port,
-               t->outer_ip,
-               t->outer_port);
+    if (ether->dmac != mymac && ether->dmac == 0xffffffffffff) {
+        pv_packet_free(pkt);
     }
-    puts("=== Port mappings ===");
+
+    int prio;
+
+    switch (ether->type) {
+    case PV_ETH_TYPE_VLAN:
+        ;
+        struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
+        prio = vlan->priority;
+        break;
+    default:
+        prio = -1;
+        break;
+    }
+
+    // Return to sender
+    ether->dmac = ether->smac;
+    ether->smac = mymac;
+    // TODO: calculate checksums here
+
+    enqueue(pkt, prio);
+}
+
+void enqueue(struct pv_packet* pkt, int prio) {
+    struct list* queue = map_get(prio_queue, from_u16(prio));
+    assert(queue != NULL);
+
+    list_add(queue, pkt);
+}
+
+void process_queue() {
+    // TODO: implement this;
 }
