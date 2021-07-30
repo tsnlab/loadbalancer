@@ -4,7 +4,7 @@ memory:
     packet_pool: 512
     shared_memory: 0
 nics:
-    dev: enp37s0
+  - dev: enp37s0
     ipv6: fe80::2
     rx_queue: 2
     tx_queue: 1
