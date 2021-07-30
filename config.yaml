@@ -1,0 +1,11 @@
+log_level: debug
+cores: [ 0 ]
+memory:
+    packet_pool: 512
+    shared_memory: 0
+nics:
+    dev: enp37s0
+    ipv6: fe80::2
+    rx_queue: 2
+    tx_queue: 1
+    promisc: 1
