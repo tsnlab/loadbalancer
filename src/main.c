@@ -1,4 +1,5 @@
-#include <arpa/inet.h>
+#include <cl/list.h>
+#include <cl/map.h>
 #include <pv/config.h>
 #include <pv/net/ethernet.h>
 #include <pv/net/ipv6.h>
@@ -6,15 +7,14 @@
 #include <pv/nic.h>
 #include <pv/pv.h>
 
-#include <cl/map.h>
-#include <cl/list.h>
+#include <arpa/inet.h>
 
 #include <assert.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#include <signal.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "nat.h"
 #include "net.h"
@@ -35,7 +35,7 @@ struct schedule {
     uint32_t window; // in ns
     uint32_t prios;  // 0 = BE, 1 = prio0, so on
 
-    struct timespec until;  // Updated on @see get_current_schedule
+    struct timespec until; // Updated on @see get_current_schedule
 };
 
 static uint32_t map_prio(int prio) {
@@ -75,7 +75,7 @@ static struct pv_ethernet* get_ether(struct pv_packet* pkt) {
 }
 
 int main(int argc, const char* argv[]) {
-    if(pv_init() != 0) {
+    if (pv_init() != 0) {
         fprintf(stderr, "Cannot initialize packetvisor\n");
         exit(1);
     }
@@ -85,7 +85,6 @@ int main(int argc, const char* argv[]) {
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
-
 
     // Setup prio map
     prio_queue = map_create(PRIO_RANGE, uint16_hash, NULL);
@@ -97,14 +96,13 @@ int main(int argc, const char* argv[]) {
     // Setup schedules
     schedules = list_create(NULL);
     // XXX: Use extended structure to store priorities
-    // 0 = BE, 1 = VLAN prio 0
     struct schedule schs[] = {
         {.window = 300000, .prios = map_prio(3)},
         {.window = 300000, .prios = map_prio(3) | map_prio(2)},
         {.window = 400000, .prios = map_prio(-1)},
     };
     schedules_size = sizeof(schs) / sizeof(schs[0]);
-    for(int i = 0; i < schedules_size; i += 1) {
+    for (int i = 0; i < schedules_size; i += 1) {
         struct schedule* sch = malloc(sizeof(struct schedule));
         memcpy((void*)sch, (void*)&schs[i], sizeof(struct schedule));
         list_add(schedules, sch);
@@ -114,10 +112,10 @@ int main(int argc, const char* argv[]) {
     // Get NIC's mac
     mymac = pv_nic_get_mac(0);
 
-    while(running) {
+    while (running) {
         uint16_t read_count = pv_nic_rx_burst(0, 0, pkts, max_pkts);
 
-        for(uint16_t i = 0; i < read_count; i++) {
+        for (uint16_t i = 0; i < read_count; i++) {
             process(pkts[i]);
         }
 
@@ -142,8 +140,7 @@ void process(struct pv_packet* pkt) {
     int prio;
 
     switch (ether->type) {
-    case PV_ETH_TYPE_VLAN:
-        ;
+    case PV_ETH_TYPE_VLAN:;
         struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
         prio = vlan->priority;
         break;
@@ -179,11 +176,11 @@ struct schedule* get_current_schedule() {
     list_iterator_init(&iter, schedules);
     int sum = 0;
     while (list_iterator_has_next(&iter)) {
-        struct schedule* sch = (struct schedule*) list_iterator_next(&iter);
+        struct schedule* sch = (struct schedule*)list_iterator_next(&iter);
         sum += sch->window;
         if (sum > mod) {
             sch->until.tv_sec = now.tv_sec;
-            sch->until.tv_nsec += sum - mod;  // FIXME
+            sch->until.tv_nsec += sum - mod; // FIXME
             return sch;
         }
     }
