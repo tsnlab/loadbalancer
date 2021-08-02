@@ -19,9 +19,9 @@
 #include "nat.h"
 #include "net.h"
 #include "timeutil.h"
+#include "utils.h"
 
 #define PRIO_RANGE 0x8
-// #define PRIO_RANGE 0x1000
 
 #define dprintf printf
 // #define dprintf(...) do{}while(false)
@@ -39,24 +39,31 @@ struct schedule {
 };
 
 static uint32_t map_prio(int prio) {
+    // BE = 0b1
+    // pri-0 = 0b10, pri-1 = 0b100
     switch (prio) {
     case -1:
-        return 0;
+        return 1;
     default:
         return 1 << (prio + 1);
     }
 }
 
-struct map* prio_queue;
+struct map* prio_queue; // prio => list<pv_packet>
 struct list* schedules;
 size_t schedules_size = 0;
 uint32_t total_window = 0;
+int credits[PRIO_RANGE + 1] = {
+    0,
+};
 
 void process(struct pv_packet* pkt);
 void enqueue(struct pv_packet* pkt, int prio);
 
 struct schedule* get_current_schedule();
 uint16_t process_queue();
+
+struct list* select_queue(struct map* queues, int prios);
 
 static void handle_signal(int signo) {
     switch (signo) {
@@ -96,6 +103,7 @@ int main(int argc, const char* argv[]) {
     // Setup schedules
     schedules = list_create(NULL);
     // XXX: Use extended structure to store priorities
+    // TODO: Read this config from user config
     struct schedule schs[] = {
         {.window = 300000, .prios = map_prio(3)},
         {.window = 300000, .prios = map_prio(3) | map_prio(2)},
@@ -196,15 +204,9 @@ uint16_t process_queue() {
     dprintf("Current window is for %x\n", current_schedule->prios);
     do {
         struct pv_packet* pkt = NULL;
-        for (uint16_t i = PRIO_RANGE - 1; i >= -1; i -= 1) {
-            // TODO: find oldest pkt in many queues
-            struct list* list = map_get(prio_queue, from_u16(i));
-            if (list_size(list) == 0) {
-                continue;
-            }
-
-            pkt = list_remove_at(list, 0);
-            break;
+        struct list* best_queue = select_queue(prio_queue, current_schedule->prios);
+        if (best_queue != NULL) {
+            pkt = list_remove_at(best_queue, 0);
         }
 
         if (pkt != NULL) {
@@ -216,4 +218,32 @@ uint16_t process_queue() {
     } while (timespec_compare(&current_schedule->until, &now) > 0);
 
     return count;
+}
+
+struct list* select_queue(struct map* queues, int prios) {
+    const int low = -5;
+    const int high = 10;
+    struct list* best = NULL;
+    int best_pri;
+    int best_credit;
+
+    for (int pri = -1; pri < PRIO_RANGE; pri += 1) {
+        if (map_prio(pri) & prios) {
+            if (best == NULL || best_credit <= credits[pri + 1]) {
+                struct list* list = map_get(queues, from_u16(pri));
+                if (list_size(best) > 0) {
+                    best_pri = pri;
+                    best_credit = credits[pri + 1];
+                    best = list;
+                }
+            }
+        }
+        credits[pri + 1] = minmax(credits[pri + 1] + 1, low, high);
+    }
+
+    if (best != NULL) {
+        credits[best_pri + 1] -= 2;
+    }
+
+    return best;
 }
