@@ -16,6 +16,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "config.h"
 #include "nat.h"
 #include "net.h"
 #include "timeutil.h"
@@ -31,26 +32,8 @@ void print_map(nat_map* nat);
 bool running = true;
 uint64_t mymac;
 
-struct schedule {
-    uint32_t window; // in ns
-    uint32_t prios;  // 0 = BE, 1 = prio0, so on
-
-    struct timespec until; // Updated on @see get_current_schedule
-};
-
-static uint32_t map_prio(int prio) {
-    // BE = 0b1
-    // pri-0 = 0b10, pri-1 = 0b100
-    switch (prio) {
-    case -1:
-        return 1;
-    default:
-        return 1 << (prio + 1);
-    }
-}
-
 struct map* prio_queue; // prio => list<pv_packet>
-struct list* schedules;
+struct schedule* schedules;
 size_t schedules_size = 0;
 uint32_t total_window = 0;
 int credits[PRIO_RANGE + 1] = {
@@ -101,21 +84,7 @@ int main(int argc, const char* argv[]) {
     }
 
     // Setup schedules
-    schedules = list_create(NULL);
-    // XXX: Use extended structure to store priorities
-    // TODO: Read this config from user config
-    struct schedule schs[] = {
-        {.window = 300000, .prios = map_prio(3)},
-        {.window = 300000, .prios = map_prio(3) | map_prio(2)},
-        {.window = 400000, .prios = map_prio(-1)},
-    };
-    schedules_size = sizeof(schs) / sizeof(schs[0]);
-    for (int i = 0; i < schedules_size; i += 1) {
-        struct schedule* sch = malloc(sizeof(struct schedule));
-        memcpy((void*)sch, (void*)&schs[i], sizeof(struct schedule));
-        list_add(schedules, sch);
-        total_window += sch->window;
-    }
+    schedules_size = get_tas_schedules(&schedules);
 
     // Get NIC's mac
     mymac = pv_nic_get_mac(0);
@@ -180,11 +149,9 @@ struct schedule* get_current_schedule() {
     uint64_t now_u = now.tv_sec * 1000000000 + now.tv_nsec;
     uint64_t mod = now_u % total_window;
 
-    struct list_iterator iter;
-    list_iterator_init(&iter, schedules);
     int sum = 0;
-    while (list_iterator_has_next(&iter)) {
-        struct schedule* sch = (struct schedule*)list_iterator_next(&iter);
+    for (int i = 0; i < schedules_size; i += 1) {
+        struct schedule* sch = &schedules[i];
         sum += sch->window;
         if (sum > mod) {
             sch->until.tv_sec = now.tv_sec;
@@ -205,14 +172,21 @@ uint16_t process_queue() {
     do {
         struct pv_packet* pkt = NULL;
         struct list* best_queue = select_queue(prio_queue, current_schedule->prios);
-        if (best_queue != NULL) {
-            pkt = list_remove_at(best_queue, 0);
+
+        if (best_queue == NULL) {
+            break;
         }
 
-        if (pkt != NULL) {
-            pv_nic_tx(0, 0, pkt);
-            count += 1;
+        pkt = list_remove_at(best_queue, 0);
+
+        if (pkt == NULL) {
+            dprintf("Pkt is null\n");
+            break;
         }
+
+        dprintf("Send packet\n");
+        pv_nic_tx(0, 0, pkt);
+        count += 1;
 
         clock_gettime(CLOCK_REALTIME, &now);
     } while (timespec_compare(&current_schedule->until, &now) > 0);
