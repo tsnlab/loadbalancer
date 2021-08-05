@@ -1,8 +1,8 @@
 log_level: debug
 cores: [ 0 ]
 memory:
-    packet_pool: 1024
-    shared_memory: 1024
+    packet_pool: 512
+    shared_memory: 1024000
 nics:
   - dev: enp37s0
     ipv6: fe80::2
@@ -18,3 +18,9 @@ loadbalancer:
         prios: [ 2, 3 ]
       - time: 400000
         prios: [ -1 ]
+    cbs:
+        3:
+            high: 9000
+            low: -180
+            idle: 3000
+            send: -2870

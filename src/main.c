@@ -33,12 +33,17 @@ bool running = true;
 uint64_t mymac;
 
 struct map* prio_queue; // prio => list<pv_packet>
+
+// TAS related configs
 struct schedule* schedules;
 size_t schedules_size = 0;
 uint32_t total_window = 0;
 int credits[PRIO_RANGE + 1] = {
     0,
 };
+
+// CBS related configs
+struct map* cbs_schedules = NULL;
 
 void process(struct pv_packet* pkt);
 void enqueue(struct pv_packet* pkt, int prio);
@@ -85,6 +90,8 @@ int main(int argc, const char* argv[]) {
 
     // Setup schedules
     schedules_size = get_tas_schedules(&schedules);
+
+    cbs_schedules = get_cbs_configs();
 
     // Get NIC's mac
     mymac = pv_nic_get_mac(0);

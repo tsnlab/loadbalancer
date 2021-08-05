@@ -1,3 +1,5 @@
+#include <cl/map.h>
+
 #include <stdint.h>
 #include <time.h>
 
@@ -8,5 +10,17 @@ struct schedule {
     struct timespec until; // Updated on @see get_current_schedule
 };
 
+struct credit_schedule {
+    int16_t high_credit;
+    int16_t low_credit;
+    int16_t idle_slope;
+    int16_t send_slope;
+};
+
 size_t get_tas_schedules(struct schedule** schedules);
 uint32_t map_prio(int prio);
+
+/**
+ * @return map<prio: uint8_t, credit_schedule>
+ */
+struct map* get_cbs_configs();
