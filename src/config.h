@@ -15,9 +15,13 @@ struct credit_schedule {
     int16_t low_credit;
     int16_t idle_slope;
     int16_t send_slope;
+
+    int16_t current_credit;
+
+    struct timespec last_checked;
 };
 
-size_t get_tas_schedules(struct schedule** schedules);
+size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window);
 uint32_t map_prio(int prio);
 
 /**

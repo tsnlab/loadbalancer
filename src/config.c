@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-size_t get_tas_schedules(struct schedule** schedules) {
+size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window) {
     const char prefix[] = "/loadbalancer/tas";
     const size_t schedule_count = pv_config_get_size(prefix);
     if (schedule_count <= 0) {
@@ -41,6 +41,8 @@ size_t get_tas_schedules(struct schedule** schedules) {
         char key_time[key_size + 8];
         snprintf(key_time, sizeof(key_time), "%s[%d]/time", prefix, i);
         sch->window = pv_config_get_num(key_time);
+
+        *total_window += sch->window;
     }
 
     return schedule_count;
@@ -91,6 +93,9 @@ struct map* get_cbs_configs() {
         sch->idle_slope = pv_config_get_num(subkey);
         snprintf(subkey, key_size, "%s/%d/send", prefix, prio);
         sch->send_slope = pv_config_get_num(subkey);
+
+        sch->current_credit = 0;
+        clock_gettime(CLOCK_REALTIME, &sch->last_checked);
 
         map_put(cbs_map, from_u8(prio), (void*)sch);
     }
