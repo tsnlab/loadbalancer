@@ -124,18 +124,22 @@ void process(struct pv_packet* pkt) {
 
     if (ether->dmac != mymac && ether->dmac == 0xffffffffffff) {
         pv_packet_free(pkt);
+        return;
     }
 
     int prio;
 
-    switch (ether->type) {
-    case PV_ETH_TYPE_VLAN:;
-        struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
-        prio = vlan->priority;
-        break;
-    default:
-        prio = -1;
-        break;
+    if (ether->type != PV_ETH_TYPE_VLAN) {
+        pv_packet_free(pkt);
+        return;
+    }
+
+    struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
+    prio = vlan->priority;
+
+    if (vlan->type != 0x1337) {
+        pv_packet_free(pkt);
+        return;
     }
 
     // Return to sender
@@ -218,6 +222,8 @@ uint16_t process_queue() {
             size_t speed = 1000000000; // FIXME: use proper setting from NIC
             int calculated_credits = cbs_sch->send_slope * PV_PACKET_PAYLOAD_LEN(pkt) * 8 / speed;
             cbs_sch->current_credit -= calculated_credits;
+            cbs_sch->current_credit =
+                minmax(cbs_sch->current_credit -= calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
         }
 
         dprintf("Send packet\n");
