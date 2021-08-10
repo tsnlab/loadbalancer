@@ -61,17 +61,20 @@ uint32_t map_prio(int prio) {
 
 struct map* get_cbs_configs() {
     const char prefix[] = "/loadbalancer/cbs";
-    // TODO: check if cbs config exists
-
-    const size_t schedule_count = pv_config_get_size(prefix);
-    if (schedule_count <= 0) {
-        return NULL;
-    }
 
     struct map* cbs_map = map_create(4, uint8_hash, NULL);
     if (cbs_map == NULL) {
         // This is an error
         return NULL;
+    }
+
+    if (pv_config_get_type(prefix) != PV_CONFIG_DICT) {
+        return cbs_map;
+    }
+
+    const size_t schedule_count = pv_config_get_size(prefix);
+    if (schedule_count <= 0) {
+        return cbs_map;
     }
 
     for (int i = 0; i < schedule_count; i += 1) {

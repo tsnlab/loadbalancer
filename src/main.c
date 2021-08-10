@@ -155,6 +155,7 @@ void enqueue(struct pv_packet* pkt, int prio) {
     if (sch != NULL) {
         struct timespec now;
         clock_gettime(CLOCK_REALTIME, &now);
+        // FIXME: only if queue was empty or calculate credits
         sch->last_checked = now;
     }
 
