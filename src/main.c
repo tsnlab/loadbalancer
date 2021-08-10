@@ -23,6 +23,7 @@
 #include "utils.h"
 
 #define PRIO_RANGE 0x8
+#define PRIOS_ALL (~0)
 
 #define dprintf printf
 // #define dprintf(...) do{}while(false)
@@ -163,6 +164,10 @@ void enqueue(struct pv_packet* pkt, int prio) {
 struct schedule* get_current_schedule() {
     struct timespec now;
 
+    if (schedules_size == 0) {
+        return NULL;
+    }
+
     clock_gettime(CLOCK_REALTIME, &now);
 
     uint64_t now_u = now.tv_sec * 1000000000 + now.tv_nsec;
@@ -188,10 +193,29 @@ uint16_t process_queue() {
     const struct schedule* current_schedule = get_current_schedule();
     struct timespec now;
 
+    struct timespec until;
+    if (current_schedule != NULL) {
+        until = current_schedule->until;
+    } else {
+        // There is no TAS
+        clock_gettime(CLOCK_REALTIME, &now);
+        until = now;
+        until.tv_nsec += 500000;
+        if (until.tv_nsec >= 1000000000) {
+            until.tv_sec += 1;
+            until.tv_nsec -= 1000000000;
+        }
+    }
+
     do {
         struct pv_packet* pkt = NULL;
         struct list* best_queue;
-        int prio = select_queue(current_schedule->prios, &best_queue);
+        int prio;
+        if (current_schedule != NULL) {
+            prio = select_queue(current_schedule->prios, &best_queue);
+        } else {
+            prio = select_queue(PRIOS_ALL, &best_queue);
+        }
 
         if (best_queue == NULL) {
             break;
@@ -223,7 +247,7 @@ uint16_t process_queue() {
         if (cbs_sch != NULL) { // Was cbs queue
             cbs_sch->last_checked = now;
         }
-    } while (timespec_compare(&current_schedule->until, &now) > 0);
+    } while (timespec_compare(&until, &now) > 0);
 
     return count;
 }

@@ -11,12 +11,12 @@ size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window) {
     const char prefix[] = "/loadbalancer/tas";
     const size_t schedule_count = pv_config_get_size(prefix);
     if (schedule_count <= 0) {
-        return -1;
+        return 0;
     }
 
     *schedules = (struct schedule*)calloc(schedule_count, sizeof(struct schedule));
     if (*schedules == NULL) {
-        return -1;
+        return 0;
     }
 
     for (int i = 0; i < schedule_count; i += 1) {
