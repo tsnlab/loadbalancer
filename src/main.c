@@ -150,15 +150,6 @@ void process(struct pv_packet* pkt) {
 void enqueue(struct pv_packet* pkt, int prio) {
     struct list* queue = map_get(prio_queue, from_i16(prio));
     assert(queue != NULL);
-
-    struct credit_schedule* sch = map_get(cbs_schedules, from_u8(prio));
-    if (sch != NULL) {
-        struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        // FIXME: only if queue was empty or calculate credits
-        sch->last_checked = now;
-    }
-
     list_add(queue, pkt);
 }
 
