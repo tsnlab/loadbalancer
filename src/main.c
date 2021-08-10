@@ -221,7 +221,6 @@ uint16_t process_queue() {
             // This is cbs scheduled queue.
             size_t speed = 1000000000; // FIXME: use proper setting from NIC
             int calculated_credits = cbs_sch->send_slope * PV_PACKET_PAYLOAD_LEN(pkt) * 8 / speed;
-            cbs_sch->current_credit -= calculated_credits;
             cbs_sch->current_credit =
                 minmax(cbs_sch->current_credit -= calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
         }
