@@ -8,6 +8,7 @@ pkg_check_modules(DPDK_PKG REQUIRED IMPORTED_TARGET libdpdk)
 set(LIBPV_PATH "${CMAKE_SOURCE_DIR}/lib/packetvisor/libpv.a")
 add_custom_target(
     libpv
+    BYPRODUCTS ${LIBPV_PATH}
     COMMAND make DEBUG=0 libpv.a
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/packetvisor
 )
@@ -28,6 +29,7 @@ add_custom_target(
 set(LIBCL_PATH "${CMAKE_SOURCE_DIR}/lib/libcollection/libcl.a")
 add_custom_target(
     libcl
+    BYPRODUCTS ${LIBCL_PATH}
     COMMAND make DEBUG=0 libcl.a
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/libcollection
 )
