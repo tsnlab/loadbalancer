@@ -11,12 +11,12 @@ struct schedule {
 };
 
 struct credit_schedule {
-    int16_t high_credit;
-    int16_t low_credit;
-    int16_t idle_slope;
-    int16_t send_slope;
+    int32_t high_credit;
+    int32_t low_credit;
+    int32_t idle_slope;
+    int32_t send_slope;
 
-    int16_t current_credit;
+    int32_t current_credit;
 
     struct timespec last_checked;
 };
