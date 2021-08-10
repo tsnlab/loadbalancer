@@ -100,18 +100,14 @@ int main(int argc, const char* argv[]) {
     while (running) {
         uint16_t read_count = pv_nic_rx_burst(0, 0, pkts, max_pkts);
 
-        printf("Read %d pkts\n", read_count);
-
         for (uint16_t i = 0; i < read_count; i++) {
             process(pkts[i]);
         }
 
-        printf("pkts processed\n");
-
         uint16_t write_count = process_queue();
 
         if (read_count == 0 && write_count == 0) {
-            usleep(100);
+            usleep(10);
         }
     }
 
@@ -173,9 +169,7 @@ struct schedule* get_current_schedule() {
     uint64_t mod = now_u % total_window;
 
     int sum = 0;
-    dprintf("Lets check %ld schedules\n", schedules_size);
     for (int i = 0; i < schedules_size; i += 1) {
-        dprintf("check schedule %d\n", i);
         struct schedule* sch = &schedules[i];
         sum += sch->window;
         if (sum > mod) {
@@ -193,7 +187,6 @@ uint16_t process_queue() {
     uint16_t count = 0;
     const struct schedule* current_schedule = get_current_schedule();
     struct timespec now;
-    dprintf("Current window is for %x\n", current_schedule->prios);
 
     do {
         struct pv_packet* pkt = NULL;
@@ -204,12 +197,9 @@ uint16_t process_queue() {
             break;
         }
 
-        dprintf("Selected prio = %d\n", prio);
-
         pkt = list_remove_at(best_queue, 0);
 
         if (pkt == NULL) {
-            dprintf("Pkt is null\n");
             break;
         }
 
@@ -223,9 +213,9 @@ uint16_t process_queue() {
             int calculated_credits = cbs_sch->send_slope * PV_PACKET_PAYLOAD_LEN(pkt) * 8 / speed;
             cbs_sch->current_credit =
                 minmax(cbs_sch->current_credit -= calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
+            dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
         }
 
-        dprintf("Send packet\n");
         pv_nic_tx(0, 0, pkt);
         count += 1;
 
@@ -242,7 +232,7 @@ int select_queue(int prios, struct list** queue) {
     const int low = -5;
     const int high = 10;
     struct list* best = NULL;
-    int best_pri;
+    int best_pri = -2;
     int best_credit;
 
     int best_cbs_credit = -1;
@@ -266,22 +256,28 @@ int select_queue(int prios, struct list** queue) {
                     struct timespec diff;
                     timespec_diff(&cbs_sch->last_checked, &now, &diff);
 
-                    int calculated_credit = (cbs_sch->idle_slope * (diff.tv_sec + ((double)diff.tv_nsec / 1000000000)));
-                    cbs_sch->current_credit =
-                        minmax(cbs_sch->current_credit + calculated_credit, cbs_sch->low_credit, cbs_sch->high_credit);
-                    cbs_sch->last_checked = now;
+                    int calculated_credits =
+                        (cbs_sch->idle_slope * (diff.tv_sec + ((double)diff.tv_nsec / 1000000000)));
+                    // Don't increase credit until reaches 0. because of inaccuracy of integer
+                    if (cbs_sch->current_credit + calculated_credits >= 0) {
+                        cbs_sch->current_credit = minmax(cbs_sch->current_credit + calculated_credits,
+                                                         cbs_sch->low_credit,
+                                                         cbs_sch->high_credit);
+                        cbs_sch->last_checked = now;
+                        dprintf("credit + %d = %d\n", calculated_credits, cbs_sch->current_credit);
+                    }
                 }
             }
 
-            if (pri >= 0 && cbs_sch != NULL && cbs_sch->current_credit >= 0 &&
-                cbs_sch->current_credit >= best_cbs_credit) {
-                if (list_size(queue) > 0) {
+            if (cbs_sch != NULL) {
+                if (cbs_sch->current_credit >= 0 && cbs_sch->current_credit >= best_cbs_credit &&
+                    list_size(queue) > 0) {
                     best_pri = pri;
                     best_credit = credits[pri + 1];
                     best = queue;
                 }
-            } else if (best == NULL || best_credit <= credits[pri + 1]) {
-                if (list_size(queue) > 0) {
+            } else {
+                if ((best == NULL || best_credit <= credits[pri + 1]) && list_size(queue) > 0) {
                     best_pri = pri;
                     best_credit = credits[pri + 1];
                     best = queue;
