@@ -6,37 +6,30 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(DPDK_PKG REQUIRED IMPORTED_TARGET libdpdk)
 
 set(LIBPV_PATH "${CMAKE_SOURCE_DIR}/lib/packetvisor/libpv.a")
-add_custom_command(
-    OUTPUT ${LIBPV_PATH}
-    COMMAND make DEBUG=0 libpv.a
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/packetvisor
-    )
 add_custom_target(
     libpv
-    DEPENDS ${LIBPV_PATH}
+    COMMAND make DEBUG=0 libpv.a
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/packetvisor
 )
 
 set(PYPV_PATH "${CMAKE_SOURCE_DIR}/lib/packetvisor/bin/pv")
-add_custom_command(
-    OUTPUT ${PYPV_PATH}
+add_custom_target(
+    pypv
     COMMAND make DEBUG=0 bin/pv
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/packetvisor
     )
 add_custom_target(
-    pypv
+    copy_pypv
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/pv
     COMMAND cp ${PYPV_PATH} ${CMAKE_BINARY_DIR}/pv
-    DEPENDS ${PYPV_PATH}
+    DEPENDS pypv
 )
 
 set(LIBCL_PATH "${CMAKE_SOURCE_DIR}/lib/libcollection/libcl.a")
-add_custom_command(
-    OUTPUT ${LIBCL_PATH}
-    COMMAND make DEBUG=0 libcl.a
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/libcollection
-    )
 add_custom_target(
     libcl
-    DEPENDS ${LIBCL_PATH}
+    COMMAND make DEBUG=0 libcl.a
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/libcollection
 )
 
 set(PUBLIC_INCLUDE_DIRECTORIES include/)
@@ -55,7 +48,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Werror)
 add_dependencies(
     ${PROJECT_NAME}
     libpv
-    pypv
+    copy_pypv
     libcl
 )
 
