@@ -77,6 +77,11 @@ int main(int argc, const char* argv[]) {
         exit(1);
     }
 
+    if (pv_nic_count() != 2) {
+        fprintf(stderr, "Need 2 NICs\n");
+        exit(1);
+    }
+
     struct pv_packet* pkts[512];
     const int max_pkts = sizeof(pkts) / sizeof(pkts[0]);
 
@@ -99,15 +104,25 @@ int main(int argc, const char* argv[]) {
     mymac = pv_nic_get_mac(0);
 
     while (running) {
-        uint16_t read_count = pv_nic_rx_burst(0, 0, pkts, max_pkts);
+        uint16_t read_count_a = pv_nic_rx_burst(0, 0, pkts, max_pkts);
 
-        for (uint16_t i = 0; i < read_count; i++) {
+        for (uint16_t i = 0; i < read_count_a; i++) {
+            process(pkts[i]);
+        }
+
+        uint16_t read_count_b = pv_nic_rx_burst(1, 0, pkts, max_pkts);
+
+        if (read_count_b > 0) {
+            dprintf("Test from b\n");
+        }
+
+        for (uint16_t i = 0; i < read_count_b; i++) {
             process(pkts[i]);
         }
 
         uint16_t write_count = process_queue();
 
-        if (read_count == 0 && write_count == 0) {
+        if (read_count_a == 0 && read_count_b == 0 && write_count == 0) {
             usleep(10);
         }
     }
@@ -126,22 +141,24 @@ void process(struct pv_packet* pkt) {
 
     int prio;
 
-    if (ether->type != PV_ETH_TYPE_VLAN) {
-        pv_packet_free(pkt);
-        return;
+    if (ether->type == PV_ETH_TYPE_VLAN) {
+        struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
+        prio = vlan->priority;
+        dprintf("Prio: %d\n", prio);
+    } else {
+        prio = -1;
     }
 
-    struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
-    prio = vlan->priority;
-
-    if (vlan->type != 0x1337) {
-        pv_packet_free(pkt);
-        return;
+    // Just forward to another port
+    dprintf("Forward pkt from %d\n", pkt->nic_id);
+    switch (pkt->nic_id) {
+    case 0:
+        pkt->nic_id = 1;
+        break;
+    case 1:
+        pkt->nic_id = 0;
+        break;
     }
-
-    // Return to sender
-    ether->dmac = ether->smac;
-    ether->smac = mymac;
     // TODO: calculate checksums here
 
     enqueue(pkt, prio);
@@ -232,7 +249,9 @@ uint16_t process_queue() {
             dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
         }
 
-        pv_nic_tx(0, 0, pkt);
+        dprintf("nic id: %d\n", pkt->nic_id);
+
+        pv_nic_tx(pkt->nic_id, 0, pkt);
         count += 1;
 
         clock_gettime(CLOCK_REALTIME, &now);
