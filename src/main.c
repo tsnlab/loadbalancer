@@ -112,10 +112,6 @@ int main(int argc, const char* argv[]) {
 
         uint16_t read_count_b = pv_nic_rx_burst(1, 0, pkts, max_pkts);
 
-        if (read_count_b > 0) {
-            dprintf("Test from b\n");
-        }
-
         for (uint16_t i = 0; i < read_count_b; i++) {
             process(pkts[i]);
         }
@@ -134,11 +130,6 @@ int main(int argc, const char* argv[]) {
 void process(struct pv_packet* pkt) {
     struct pv_ethernet* ether = get_ether(pkt);
 
-    if (ether->dmac != mymac && ether->dmac == 0xffffffffffff) {
-        pv_packet_free(pkt);
-        return;
-    }
-
     int prio;
 
     if (ether->type == PV_ETH_TYPE_VLAN) {
@@ -150,7 +141,6 @@ void process(struct pv_packet* pkt) {
     }
 
     // Just forward to another port
-    dprintf("Forward pkt from %d\n", pkt->nic_id);
     switch (pkt->nic_id) {
     case 0:
         pkt->nic_id = 1;
@@ -248,8 +238,6 @@ uint16_t process_queue() {
                 minmax(cbs_sch->current_credit -= calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
             dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
         }
-
-        dprintf("nic id: %d\n", pkt->nic_id);
 
         pv_nic_tx(pkt->nic_id, 0, pkt);
         count += 1;
