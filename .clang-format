@@ -66,7 +66,10 @@ ForEachMacros:
   - FOREACH
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '<tsn/'
+  - Regex: '<cl/'
+    Priority: -3
+    SortPriority: 0
+  - Regex: '<pv/'
     Priority: -3
     SortPriority: 0
   - Regex: '<.*/.*'
