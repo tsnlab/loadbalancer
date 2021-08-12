@@ -1,13 +1,18 @@
 log_level: debug
-cores: [ 0 ]
+cores: [ 0, 1 ]
 memory:
-    packet_pool: 512
-    shared_memory: 1024000
+    packet_pool: 8192
+    shared_memory: 1024
 nics:
-  - dev: enp37s0
+  - dev: enp3s0
     ipv6: fe80::2
-    rx_queue: 2
-    tx_queue: 1
+    rx_queue: 1024
+    tx_queue: 1024
+    promisc: 1
+  - dev: enp4s0
+    ipv6: fe80::2
+    rx_queue: 1024
+    tx_queue: 1024
     promisc: 1
 
 loadbalancer:
