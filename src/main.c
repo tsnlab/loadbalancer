@@ -25,8 +25,10 @@
 #define PRIO_RANGE 0x8
 #define PRIOS_ALL (~0)
 
+// clang-format off
 // #define dprintf printf
 #define dprintf(...) do{}while(false)
+// clang-format on
 
 void print_map(nat_map* nat);
 
