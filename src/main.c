@@ -25,8 +25,8 @@
 #define PRIO_RANGE 0x8
 #define PRIOS_ALL (~0)
 
-#define dprintf printf
-// #define dprintf(...) do{}while(false)
+// #define dprintf printf
+#define dprintf(...) do{}while(false)
 
 void print_map(nat_map* nat);
 
@@ -135,7 +135,6 @@ void process(struct pv_packet* pkt) {
     if (ether->type == PV_ETH_TYPE_VLAN) {
         struct pv_vlan* vlan = PV_ETH_PAYLOAD(ether);
         prio = vlan->priority;
-        dprintf("Prio: %d\n", prio);
     } else {
         prio = -1;
     }
@@ -239,8 +238,12 @@ uint16_t process_queue() {
             dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
         }
 
-        pv_nic_tx(pkt->nic_id, 0, pkt);
-        count += 1;
+        int sent = pv_nic_tx(pkt->nic_id, 0, pkt);
+        if (sent == 0) {
+            pv_packet_free(pkt);
+            dprintf("NOT SENT!!!!!\n");
+        }
+        count += sent;
 
         clock_gettime(CLOCK_REALTIME, &now);
         if (cbs_sch != NULL) { // Was cbs queue
