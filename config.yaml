@@ -16,7 +16,8 @@ nics:
     promisc: 1
 
 loadbalancer:
-    tas:
+    queue_size: 2048
+    _tas:
       - time: 300000
         prios: [ 3 ]
       - time: 300000
@@ -25,7 +26,7 @@ loadbalancer:
         prios: [ -1 ]
     cbs:
         3:
-            high: 9000
-            low: -180
-            idle: 3000
-            send: -2870
+            high: 463
+            low: -8220
+            idle:  300000000
+            send: -700000000

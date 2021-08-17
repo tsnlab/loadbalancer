@@ -62,7 +62,7 @@ uint32_t map_prio(int prio) {
 struct map* get_cbs_configs() {
     const char prefix[] = "/loadbalancer/cbs";
 
-    struct map* cbs_map = map_create(4, uint8_hash, NULL);
+    struct map* cbs_map = map_create(4, int8_hash, NULL);
     if (cbs_map == NULL) {
         // This is an error
         return NULL;
@@ -80,7 +80,8 @@ struct map* get_cbs_configs() {
     for (int i = 0; i < schedule_count; i += 1) {
 
         // Get the key first
-        const uint8_t prio = atoi(pv_config_get_key(prefix, i));
+        const int8_t prio = atoi(pv_config_get_key(prefix, i));
+        printf("Prio: %d\n", prio);
 
         const int key_size = strlen(prefix) + 3 /* /dd */ + strlen("/send") + 1;
         char subkey[key_size];
