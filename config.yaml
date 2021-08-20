@@ -1,5 +1,5 @@
 log_level: debug
-cores: [ 0, 1 ]
+cores: [ 1, 2 ]
 memory:
     packet_pool: 8192
     shared_memory: 1024

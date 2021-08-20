@@ -93,7 +93,7 @@ static struct pv_ethernet* get_ether(struct pv_packet* pkt) {
 }
 
 static int read_loop(void* _dummy) {
-    printf("Starting Reader!\n");
+    printf("Starting Reader on %d!\n", pv_thread_core_id());
 
     struct pv_packet* pkts[64];
     const int max_pkts = sizeof(pkts) / sizeof(pkts[0]);
@@ -110,27 +110,41 @@ static int read_loop(void* _dummy) {
         for (uint16_t i = 0; i < read_count_b; i++) {
             process(pkts[i]);
         }
-
-        if (read_count_a == 0 && read_count_b == 0) {
-            usleep(10);
-        }
     }
 
-    return 1;
+    printf("Ending reader!\n");
+
+    return 0;
 }
 
 static int write_loop(void* _dummy) {
-    printf("Starting writer!\n");
+    printf("Starting writer on %d!\n", pv_thread_core_id());
 
     while (running) {
         uint16_t write_count = process_queue();
-        // if (write_count == 0) {
-        //     usleep(10);
-        // }
         (void)write_count;
     }
 
-    return 1;
+    printf("Ending writer!\n");
+
+    return 0;
+}
+
+static int main_loop(void* _dummy) {
+    int coreid = pv_thread_core_id();
+
+    switch (coreid) {
+    case 0:
+        write_loop(_dummy);
+        break;
+    case 1:
+        read_loop(_dummy);
+        break;
+    default:
+        printf("I'm useless %d\n", coreid);
+    }
+
+    return 0;
 }
 
 int main(int argc, const char* argv[]) {
@@ -173,13 +187,17 @@ int main(int argc, const char* argv[]) {
 
     // Start processing
 
-    int res_writer = pv_thread_run_at(write_loop, NULL, cores[0]);
-    int res_reader = pv_thread_run_at(read_loop, NULL, cores[1]);
-    if (res_writer != 0 || res_reader != 0) {
-        fprintf(stderr, "Failed to start threads\n");
-        exit(1);
-    }
+    // (void)main_loop;
+    // int res_writer = pv_thread_run_at(write_loop, NULL, cores[0]);
+    // int res_reader = pv_thread_run_at(read_loop, NULL, cores[1]);
+    // if (res_writer != 0 || res_reader != 0) {
+    //     fprintf(stderr, "Failed to start threads\n");
+    //     exit(1);
+    // }
 
+    // pv_thread_wait_all();
+
+    pv_thread_run_all(main_loop, NULL, true);
     pv_thread_wait_all();
 
     pv_finalize();
