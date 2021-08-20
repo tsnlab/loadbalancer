@@ -19,10 +19,10 @@ size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window) {
         return 0;
     }
 
-    for (int i = 0; i < schedule_count; i += 1) {
+    for (unsigned int i = 0; i < schedule_count; i += 1) {
         const int key_size = strlen(prefix) + 4 /* [dd] */ + strlen("/prios");
         char key_schedule[key_size];
-        snprintf(key_schedule, key_size, "%s[%d]/prios", prefix, i);
+        snprintf(key_schedule, key_size, "%s[%u]/prios", prefix, i);
         const size_t prio_count = pv_config_get_size(key_schedule);
 
         int prio_inlined = 0;
@@ -77,13 +77,13 @@ struct map* get_cbs_configs() {
         return cbs_map;
     }
 
-    for (int i = 0; i < schedule_count; i += 1) {
+    for (unsigned int i = 0; i < schedule_count; i += 1) {
 
         // Get the key first
         const int8_t prio = atoi(pv_config_get_key(prefix, i));
         printf("Prio: %d\n", prio);
 
-        const int key_size = strlen(prefix) + 3 /* /dd */ + strlen("/send") + 1;
+        const int key_size = strlen(prefix) + 5 /* /-dd */ + strlen("/send") + 1;
         char subkey[key_size];
 
         struct credit_schedule* sch = malloc(sizeof(struct credit_schedule));
