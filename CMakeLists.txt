@@ -64,7 +64,3 @@ target_link_libraries(
 file(
     COPY ${CMAKE_SOURCE_DIR}/config.yaml
     DESTINATION ${CMAKE_BINARY_DIR})
-
-install(
-    TARGETS ${PROJECT_NAME}
-)

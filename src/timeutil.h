@@ -1,5 +1,4 @@
-#ifndef __TIMEUTIL_H__
-#define __TIMEUTIL_H__
+#pragma once
 
 #include <sys/time.h>
 
@@ -8,5 +7,3 @@ void timespec_diff(const struct timespec* start, const struct timespec* end, str
 
 // >0 if a > b
 int timespec_compare(const struct timespec* a, const struct timespec* b);
-
-#endif
