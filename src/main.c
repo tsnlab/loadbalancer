@@ -13,25 +13,20 @@
 #include <assert.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "config.h"
-#include "nat.h"
-#include "net.h"
+#include "port.h"
 #include "timeutil.h"
 #include "utils.h"
-
-#define PRIO_RANGE 0x8
-#define PRIOS_ALL (~0)
 
 // clang-format off
 // #define dprintf printf
 #define dprintf(...) do{}while(false)
 // clang-format on
-
-void print_map(nat_map* nat);
 
 bool running = true;
 uint64_t mymac;
