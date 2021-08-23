@@ -23,53 +23,24 @@
 #include "timeutil.h"
 #include "utils.h"
 
-// clang-format off
-// #define dprintf printf
-#define dprintf(...) do{}while(false)
-// clang-format on
-
 bool running = true;
-uint64_t mymac;
 
-struct map* prio_queue; // prio => list<pv_packet>
-struct pv_thread_lock queue_locks[PRIO_RANGE + 1];
+int port_count;
+struct port* ports;
 #define MAX_QUEUE_SIZE 2048 // TODO: Set this value from user config
 
 // TAS related configs
 struct schedule* schedules;
 size_t schedules_size = 0;
 uint32_t total_window = 0;
-int credits[PRIO_RANGE + 1] = {
-    0,
-};
-
-// CBS related configs
-// map<prio: int8_t, struct credit_schedule>
-struct map* cbs_schedules = NULL;
-
-static void prio_write_lock(int prio) {
-    pv_thread_lock_write_lock(&queue_locks[prio + 1]);
-}
-
-static void prio_write_unlock(int prio) {
-    pv_thread_lock_write_unlock(&queue_locks[prio + 1]);
-}
-
-static void prio_read_lock(int prio) {
-    pv_thread_lock_read_lock(&queue_locks[prio + 1]);
-}
-
-static void prio_read_unlock(int prio) {
-    pv_thread_lock_read_unlock(&queue_locks[prio + 1]);
-}
 
 void process(struct pv_packet* pkt);
-void enqueue(struct pv_packet* pkt, int prio);
+void enqueue(struct pv_packet* pkt, int portid, int prio);
 
 struct schedule* get_current_schedule();
 uint16_t process_queue();
 
-int select_queue(int prios, struct list** queue);
+void select_queue(int prios, struct queue** selected_queue, int* selected_portid, int* selected_prio);
 
 static void handle_signal(int signo) {
     switch (signo) {
@@ -83,7 +54,7 @@ static void handle_signal(int signo) {
     running = false;
 }
 
-static struct pv_ethernet* get_ether(struct pv_packet* pkt) {
+static inline struct pv_ethernet* get_ether(struct pv_packet* pkt) {
     return (struct pv_ethernet*)PV_PACKET_PAYLOAD(pkt);
 }
 
@@ -148,8 +119,10 @@ int main(int argc, const char* argv[]) {
         exit(1);
     }
 
-    if (pv_nic_count() != 2) {
-        fprintf(stderr, "Need 2 NICs\n");
+    port_count = pv_nic_count();
+
+    if (port_count < 2) {
+        fprintf(stderr, "Need at least 2 NICs\n");
         exit(1);
     }
 
@@ -160,37 +133,17 @@ int main(int argc, const char* argv[]) {
         exit(1);
     }
 
-    // Setup prio map
-    prio_queue = map_create(PRIO_RANGE + 1, int16_hash, NULL);
-    for (int16_t prio = -1; prio < PRIO_RANGE; prio += 1) {
-        struct list* list = list_create(NULL);
-        map_put(prio_queue, from_i16(prio), list);
-        pv_thread_lock_init(&queue_locks[prio + 1]);
-    }
+    ports = calloc(sizeof(struct port), port_count);
+    ports_init(ports, port_count);
 
     // Setup schedules
     schedules_size = get_tas_schedules(&schedules, &total_window);
     printf("TAS %ld\n", schedules_size);
 
-    cbs_schedules = get_cbs_configs();
-
-    // Get NIC's mac
-    mymac = pv_nic_get_mac(0);
+    // Start processing
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
-
-    // Start processing
-
-    // (void)main_loop;
-    // int res_writer = pv_thread_run_at(write_loop, NULL, cores[0]);
-    // int res_reader = pv_thread_run_at(read_loop, NULL, cores[1]);
-    // if (res_writer != 0 || res_reader != 0) {
-    //     fprintf(stderr, "Failed to start threads\n");
-    //     exit(1);
-    // }
-
-    // pv_thread_wait_all();
 
     pv_thread_run_all(main_loop, NULL, true);
     pv_thread_wait_all();
@@ -211,33 +164,21 @@ void process(struct pv_packet* pkt) {
         prio = -1;
     }
 
-    // Just forward to another port
-    switch (pkt->nic_id) {
-    case 0:
-        pkt->nic_id = 1;
-        break;
-    case 1:
-        pkt->nic_id = 0;
-        break;
-    }
     // TODO: calculate checksums here
 
-    enqueue(pkt, prio);
+    // FIXME: use CAM table
+    int portid = (pkt->nic_id + 1) % port_count;
+
+    enqueue(pkt, portid, prio);
 }
 
-void enqueue(struct pv_packet* pkt, int prio) {
-    struct list* queue = map_get(prio_queue, from_i16(prio));
-    assert(queue != NULL);
-    prio_read_lock(prio);
-    size_t q_len = list_size(queue);
-    prio_read_unlock(prio);
-    if (q_len >= MAX_QUEUE_SIZE) {
-        dprintf("Drop pkt prio %d\n", prio);
+void enqueue(struct pv_packet* pkt, int portid, int prio) {
+    if (port_queue_size(&ports[portid], prio) > MAX_QUEUE_SIZE) {
+        dprintf("Drop pkt toport %d prio %d\n", portid, prio);
         pv_packet_free(pkt);
     } else {
-        prio_write_lock(prio);
-        list_add(queue, pkt);
-        prio_write_unlock(prio);
+        pkt->nic_id = portid;
+        port_push_tx(&ports[portid], prio, pkt);
     }
 }
 
@@ -289,21 +230,20 @@ uint16_t process_queue() {
 
     do {
         struct pv_packet* pkt = NULL;
-        struct list* best_queue;
-        int prio;
+        struct queue* best_queue;
+        int portid, prio;
         if (current_schedule != NULL) {
-            prio = select_queue(current_schedule->prios, &best_queue);
+            select_queue(current_schedule->prios, &best_queue, &portid, &prio);
         } else {
-            prio = select_queue(PRIOS_ALL, &best_queue);
+            select_queue(PRIOS_ALL, &best_queue, &portid, &prio);
         }
 
         if (best_queue == NULL) {
             break;
         }
 
-        prio_write_lock(prio);
-        pkt = list_remove_at(best_queue, 0);
-        prio_write_unlock(prio);
+        // pull from queue
+        pkt = port_pop_tx(&ports[portid], prio);
 
         if (pkt == NULL) {
             dprintf("Impossible, maybe concurrent error\n");
@@ -312,18 +252,17 @@ uint16_t process_queue() {
 
         dprintf("There are pkt\n");
 
-        struct credit_schedule* cbs_sch = map_get(cbs_schedules, from_i8(prio));
-        if (cbs_sch != NULL) {
-            dprintf("This is cbs enabled queue\n");
-            // This is cbs scheduled queue.
-            size_t speed = 1000000000; // FIXME: use proper setting from NIC
-            int calculated_credits = (double)cbs_sch->send_slope / speed * PV_PACKET_PAYLOAD_LEN(pkt) * 8;
-            prio_write_lock(prio);
-            cbs_sch->current_credit =
-                minmax(cbs_sch->current_credit += calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
-            dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
-            prio_write_unlock(prio);
-        }
+        // DO cbs job
+        // struct credit_schedule* cbs_sch = map_get(cbs_schedules, from_i8(prio));
+        // if (cbs_sch != NULL) {
+        //     dprintf("This is cbs enabled queue\n");
+        //     // This is cbs scheduled queue.
+        //     size_t speed = 1000000000; // FIXME: use proper setting from NIC
+        //     int calculated_credits = (double)cbs_sch->send_slope / speed * PV_PACKET_PAYLOAD_LEN(pkt) * 8;
+        //     cbs_sch->current_credit =
+        //         minmax(cbs_sch->current_credit += calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
+        //     dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
+        // }
 
         int sent = pv_nic_tx(pkt->nic_id, 0, pkt);
         if (sent == 0) {
@@ -333,82 +272,65 @@ uint16_t process_queue() {
         count += sent;
 
         clock_gettime(CLOCK_REALTIME, &now);
-        if (cbs_sch != NULL) { // Was cbs queue
-            cbs_sch->last_checked = now;
-        }
+        // if (cbs_sch != NULL) { // Was cbs queue
+        //     cbs_sch->last_checked = now;
+        // }
     } while (timespec_compare(&until, &now) > 0);
 
     return count;
 }
 
-int select_queue(int prios, struct list** queue) {
-    const int low = -5;
-    const int high = 10;
-    struct list* best = NULL;
+void select_queue(int prios, struct queue** selected_queue, int* selected_portid, int* selected_prio) {
+
+    struct queue* best_normal_queue = NULL;
+    struct queue* best_cbs_queue = NULL;
+
+    int best_credit = -1;
+    int best_port = -1;
     int best_pri = -2;
-    int best_credit = low - 1;
 
     int best_cbs_credit = -1;
+    int best_cbs_port = -1;
+    int best_cbs_pri = -2;
 
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
 
-    for (int pri = -1; pri < PRIO_RANGE; pri += 1) {
-        if (map_prio(pri) & prios) {
-            struct credit_schedule* cbs_sch = map_get(cbs_schedules, from_i8(pri));
-            struct list* queue = map_get(prio_queue, from_i16(pri));
-            assert(queue != NULL);
-            prio_read_lock(pri);
-            size_t queue_size = list_size(queue);
-            prio_read_unlock(pri);
+    for (int portid = 0; portid < port_count; portid += 1) {
+        for (int pri = -1; pri < PRIO_RANGE; pri += 1) {
+            if (map_prio(pri) & prios) {
 
-            if (cbs_sch != NULL) {
-                if (queue_size == 0) {
-                    // Case 1. There are no queued packet.
-                    cbs_sch->current_credit = minmax(cbs_sch->current_credit, cbs_sch->low_credit, 0);
-                    cbs_sch->last_checked = now;
-                } else {
-                    // Case 2. calculate waited credits
-                    struct timespec diff;
-                    timespec_diff(&cbs_sch->last_checked, &now, &diff);
+                int credit, cbs_credit;
+                calculate_credits(&ports[portid], pri, &credit, &cbs_credit, &now);
 
-                    int calculated_credits =
-                        (cbs_sch->idle_slope * (diff.tv_sec + ((double)diff.tv_nsec / 1000000000)));
-                    // Don't increase credit until reaches 0. because of inaccuracy of integer
-                    if (cbs_sch->current_credit + calculated_credits >= 0) {
-                        prio_write_lock(pri);
-                        cbs_sch->current_credit = minmax(cbs_sch->current_credit + calculated_credits,
-                                                         cbs_sch->low_credit,
-                                                         cbs_sch->high_credit);
-                        cbs_sch->last_checked = now;
-                        dprintf("credit + %d = %d\n", calculated_credits, cbs_sch->current_credit);
-                        prio_write_unlock(pri);
+                size_t queue_size = port_queue_size(&ports[portid], pri);
+
+                if (queue_size > 0) {
+                    if (cbs_credit != -1) {
+                        if (best_cbs_queue == NULL || cbs_credit > best_cbs_credit) {
+                            best_cbs_credit = cbs_credit;
+                            best_cbs_port = portid;
+                            best_cbs_pri = pri;
+                        }
+                    } else {
+                        if (best_normal_queue == NULL || credit > best_credit) {
+                            best_credit = credit;
+                            best_port = portid;
+                            best_pri = pri;
+                        }
                     }
                 }
             }
-
-            if (cbs_sch != NULL) {
-                if (cbs_sch->current_credit >= 0 && cbs_sch->current_credit >= best_cbs_credit && queue_size > 0) {
-                    best_pri = pri;
-                    best_credit = credits[pri + 1];
-                    best = queue;
-                    best_cbs_credit = cbs_sch->current_credit;
-                }
-            } else {
-                if (best_cbs_credit == -1 && (best == NULL || best_credit <= credits[pri + 1]) && queue_size > 0) {
-                    best_pri = pri;
-                    best_credit = credits[pri + 1];
-                    best = queue;
-                }
-            }
         }
-        credits[pri + 1] = minmax(credits[pri + 1] + 1, low, high);
     }
 
-    if (best != NULL) {
-        credits[best_pri + 1] -= 2;
+    if (best_cbs_queue) {
+        *selected_portid = best_cbs_port;
+        *selected_prio = best_cbs_pri;
+        *selected_queue = best_cbs_queue;
+    } else {
+        *selected_portid = best_port;
+        *selected_prio = best_pri;
+        *selected_queue = best_normal_queue;
     }
-
-    *queue = best;
-    return best_pri;
 }

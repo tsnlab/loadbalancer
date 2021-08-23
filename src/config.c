@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "port.h"
+
 size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window) {
     const char prefix[] = "/loadbalancer/tas";
     const size_t schedule_count = pv_config_get_size(prefix);
@@ -59,50 +61,37 @@ uint32_t map_prio(int prio) {
     }
 }
 
-struct map* get_cbs_configs() {
+void get_cbs_configs(struct credit_schedule* schedules) {
     const char prefix[] = "/loadbalancer/cbs";
 
-    struct map* cbs_map = map_create(4, int8_hash, NULL);
-    if (cbs_map == NULL) {
-        // This is an error
-        return NULL;
-    }
-
     if (pv_config_get_type(prefix) != PV_CONFIG_DICT) {
-        return cbs_map;
+        return;
     }
 
     const size_t schedule_count = pv_config_get_size(prefix);
     if (schedule_count <= 0) {
-        return cbs_map;
+        return;
     }
+
+    memset(schedules, 0, sizeof(struct credit_schedule) * (PRIO_RANGE + 1));
 
     for (unsigned int i = 0; i < schedule_count; i += 1) {
 
         // Get the key first
         const int8_t prio = atoi(pv_config_get_key(prefix, i));
         printf("Prio: %d\n", prio);
+        int index = prio_to_index(prio);
 
         const int key_size = strlen(prefix) + 5 /* /-dd */ + strlen("/send") + 1;
         char subkey[key_size];
 
-        struct credit_schedule* sch = malloc(sizeof(struct credit_schedule));
-        assert(sch != NULL);
-
         snprintf(subkey, key_size, "%s/%d/high", prefix, prio);
-        sch->high_credit = pv_config_get_num(subkey);
+        schedules[index].high_credit = pv_config_get_num(subkey);
         snprintf(subkey, key_size, "%s/%d/low", prefix, prio);
-        sch->low_credit = pv_config_get_num(subkey);
+        schedules[index].low_credit = pv_config_get_num(subkey);
         snprintf(subkey, key_size, "%s/%d/idle", prefix, prio);
-        sch->idle_slope = pv_config_get_num(subkey);
+        schedules[index].idle_slope = pv_config_get_num(subkey);
         snprintf(subkey, key_size, "%s/%d/send", prefix, prio);
-        sch->send_slope = pv_config_get_num(subkey);
-
-        sch->current_credit = 0;
-        clock_gettime(CLOCK_REALTIME, &sch->last_checked);
-
-        map_put(cbs_map, from_u8(prio), (void*)sch);
+        schedules[index].send_slope = pv_config_get_num(subkey);
     }
-
-    return cbs_map;
 }

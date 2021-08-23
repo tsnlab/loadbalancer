@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cl/map.h>
 
 #include <stdint.h>
@@ -11,20 +13,14 @@ struct schedule {
 };
 
 struct credit_schedule {
+    bool is_cbs;
     int32_t high_credit;
     int32_t low_credit;
     int32_t idle_slope;
     int32_t send_slope;
-
-    int32_t current_credit;
-
-    struct timespec last_checked;
 };
 
 size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window);
 uint32_t map_prio(int prio);
 
-/**
- * @return map<prio: uint8_t, credit_schedule>
- */
-struct map* get_cbs_configs();
+void get_cbs_configs(struct credit_schedule* schedules);
