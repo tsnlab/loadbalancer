@@ -11,8 +11,9 @@
 
 size_t get_tas_schedules(struct schedule** schedules, uint32_t* total_window) {
     const char prefix[] = "/loadbalancer/tas";
-    const size_t schedule_count = pv_config_get_size(prefix);
+    const int schedule_count = pv_config_get_size(prefix);
     if (schedule_count <= 0) {
+        printf("No TAS\n");
         return 0;
     }
 

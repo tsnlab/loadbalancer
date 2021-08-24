@@ -356,10 +356,12 @@ bool select_queue(int prios, int* selected_portid, int* selected_prio) {
         *selected_prio = best_cbs_pri;
         spend_credit(&ports[best_cbs_port], best_cbs_pri);
         return best_cbs_queue;
-    } else {
+    } else if (best_normal_queue) {
         *selected_portid = best_port;
         *selected_prio = best_pri;
         spend_credit(&ports[best_port], best_pri);
         return best_normal_queue;
     }
+
+    return false;
 }

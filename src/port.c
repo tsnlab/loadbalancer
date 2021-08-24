@@ -59,7 +59,10 @@ bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
 
     int calculated_credit =
         minmax(port->queue_credits[prio_to_index(prio)] + 1, port_queue_lowcredit, port_queue_highcredit);
+    pv_thread_lock_write_lock(&port->lock);
     port->queue_credits[prio_to_index(prio)] = calculated_credit;
+    pv_thread_lock_write_unlock(&port->lock);
+
     *credit = calculated_credit;
 
     if (queue->is_cbs) {
@@ -127,10 +130,6 @@ bool port_push_tx(struct port* port, int prio, struct pv_packet* pkt) {
         return false;
     }
 
-    pv_thread_lock_write_lock(&port->lock);
-    port->remaining_pkts += 1;
-    pv_thread_lock_write_unlock(&port->lock);
-
     return true;
 }
 
@@ -140,19 +139,5 @@ struct pv_packet* port_pop_tx(struct port* port, int prio) {
     pv_thread_lock_write_lock(&queue->lock);
     struct pv_packet* pkt = (struct pv_packet*)list_remove_at(queue->pkts, 0);
     pv_thread_lock_write_unlock(&queue->lock);
-
-    if (pkt != NULL) {
-        pv_thread_lock_write_lock(&port->lock);
-        port->remaining_pkts -= 1;
-        pv_thread_lock_write_unlock(&port->lock);
-    }
     return pkt;
 }
-
-// bool port_is_tx_empty(struct port* port) {
-//     pv_thread_lock_read_lock(&port->lock);
-//     int remaining = port->remaining_pkts;
-//     pv_thread_lock_read_unlock(&port->lock);
-
-//     return remaining == 0;
-// }

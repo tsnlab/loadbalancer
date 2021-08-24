@@ -25,8 +25,6 @@ struct port {
     struct map* prio_queues;
     // Not cbs, just prevent starvation.
     int queue_credits[PRIO_RANGE + 1];
-
-    size_t remaining_pkts;
 };
 
 struct queue {
