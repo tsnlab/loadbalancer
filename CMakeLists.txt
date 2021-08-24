@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.10)
 
 project(loadbalancer)
 
+string(APPEND CMAKE_C_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address -DDEBUG")
+string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DPDK_PKG REQUIRED IMPORTED_TARGET libdpdk)
 
