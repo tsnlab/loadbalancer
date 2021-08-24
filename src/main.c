@@ -34,6 +34,12 @@ struct schedule* schedules;
 size_t schedules_size = 0;
 uint32_t total_window = 0;
 
+// CAM table
+struct map* cam; // mac -> portid: int
+
+// Return -1 when cannot find correct port
+int find_port(struct pv_packet* pkt);
+
 void process(struct pv_packet* pkt);
 void enqueue(struct pv_packet* pkt, int portid, int prio);
 
@@ -134,6 +140,8 @@ int main(int argc, const char* argv[]) {
     ports = calloc(sizeof(struct port), port_count);
     ports_init(ports, port_count);
 
+    cam = map_create(port_count, uint64_hash, NULL);
+
     // Setup schedules
     schedules_size = get_tas_schedules(&schedules, &total_window);
     printf("TAS %ld\n", schedules_size);
@@ -150,6 +158,24 @@ int main(int argc, const char* argv[]) {
     return 0;
 }
 
+int find_port(struct pv_packet* pkt) {
+    struct pv_ethernet* ether = get_ether(pkt);
+    uint64_t dmac = ether->dmac;
+    uint64_t smac = ether->smac;
+    int32_t sport = pkt->nic_id;
+
+    if (!map_has(cam, from_u64(smac))) {
+        map_put(cam, from_u64(smac), from_i32(sport));
+        printf("Put smac %012lx into port %d\n", smac, sport);
+    }
+
+    if (map_has(cam, from_u64(dmac))) {
+        return to_i32(map_get(cam, from_u64(dmac)));
+    } else {
+        return -1;
+    }
+}
+
 void process(struct pv_packet* pkt) {
     struct pv_ethernet* ether = get_ether(pkt);
 
@@ -162,10 +188,19 @@ void process(struct pv_packet* pkt) {
         prio = -1;
     }
 
-    // FIXME: use CAM table
-    int portid = (pkt->nic_id + 1) % port_count;
+    int portid = find_port(pkt);
 
-    enqueue(pkt, portid, prio);
+    if (portid == -1) {
+        for (int i = 0; i < port_count; i += 1) {
+            struct pv_packet* new_pkt = pv_packet_alloc();
+            memcpy(PV_PACKET_PAYLOAD(new_pkt), PV_PACKET_PAYLOAD(pkt), PV_PACKET_PAYLOAD_LEN(pkt));
+            enqueue(pkt, i, prio);
+        }
+        // FIXME: Don't need to allocate one more and free original one.
+        pv_packet_free(pkt);
+    } else {
+        enqueue(pkt, portid, prio);
+    }
 }
 
 void enqueue(struct pv_packet* pkt, int portid, int prio) {
