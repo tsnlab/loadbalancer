@@ -8,6 +8,14 @@
 #include "timeutil.h"
 #include "utils.h"
 
+int prio_to_index(int prio) {
+    return prio + 1;
+}
+
+int index_to_prio(int index) {
+    return index - 1;
+}
+
 static inline struct queue* get_queue(struct port* port, int16_t prio) {
     return map_get(port->prio_queues, from_i16(prio));
 }
@@ -79,6 +87,20 @@ void spend_credit(struct port* port, int prio) {
         minmax(port->queue_credits[prio_to_index(prio)] - 2, port_queue_lowcredit, port_queue_highcredit);
 }
 
+void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct timespec* now) {
+    struct queue* queue = get_queue(port, prio);
+    if (!queue->is_cbs) {
+        return;
+    }
+
+    size_t speed = 1000000000; // FIXME: use proper setting from NIC
+    int calculated_credits = (double)queue->send_slope / speed * pkt_size_byte * 8;
+    queue->cbs_credits = minmax(queue->cbs_credits += calculated_credits, queue->low_credit, queue->high_credit);
+    dprintf("credit - %d = %d\n", calculated_credits, queue->cbs_credits);
+
+    queue->last_checked = *now;
+}
+
 size_t port_queue_size(struct port* port, int prio) {
     struct queue* queue = get_queue(port, prio);
     pv_thread_lock_read_lock(&queue->lock);
@@ -106,13 +128,23 @@ bool port_push_tx(struct port* port, int prio, struct pv_packet* pkt) {
 
 struct pv_packet* port_pop_tx(struct port* port, int prio) {
     struct queue* queue = get_queue(port, prio);
-    return (struct pv_packet*)list_remove_at(queue->pkts, 0);
+
+    pv_thread_lock_write_lock(&queue->lock);
+    struct pv_packet* pkt = (struct pv_packet*)list_remove_at(queue->pkts, 0);
+    pv_thread_lock_write_unlock(&queue->lock);
+
+    if (pkt != NULL) {
+        pv_thread_lock_write_lock(&port->lock);
+        port->remaining_pkts -= 1;
+        pv_thread_lock_write_unlock(&port->lock);
+    }
+    return pkt;
 }
 
-bool port_is_tx_empty(struct port* port) {
-    pv_thread_lock_read_lock(&port->lock);
-    int remaining = port->remaining_pkts;
-    pv_thread_lock_read_unlock(&port->lock);
+// bool port_is_tx_empty(struct port* port) {
+//     pv_thread_lock_read_lock(&port->lock);
+//     int remaining = port->remaining_pkts;
+//     pv_thread_lock_read_unlock(&port->lock);
 
-    return remaining == 0;
-}
+//     return remaining == 0;
+// }

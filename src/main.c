@@ -40,7 +40,7 @@ void enqueue(struct pv_packet* pkt, int portid, int prio);
 struct schedule* get_current_schedule();
 uint16_t process_queue();
 
-void select_queue(int prios, struct queue** selected_queue, int* selected_portid, int* selected_prio);
+bool select_queue(int prios, int* selected_portid, int* selected_prio);
 
 static void handle_signal(int signo) {
     switch (signo) {
@@ -164,8 +164,6 @@ void process(struct pv_packet* pkt) {
         prio = -1;
     }
 
-    // TODO: calculate checksums here
-
     // FIXME: use CAM table
     int portid = (pkt->nic_id + 1) % port_count;
 
@@ -230,17 +228,19 @@ uint16_t process_queue() {
 
     do {
         struct pv_packet* pkt = NULL;
-        struct queue* best_queue;
+        bool queue_available;
         int portid, prio;
         if (current_schedule != NULL) {
-            select_queue(current_schedule->prios, &best_queue, &portid, &prio);
+            queue_available = select_queue(current_schedule->prios, &portid, &prio);
         } else {
-            select_queue(PRIOS_ALL, &best_queue, &portid, &prio);
+            queue_available = select_queue(PRIOS_ALL, &portid, &prio);
         }
 
-        if (best_queue == NULL) {
+        if (!queue_available) {
             break;
         }
+
+        dprintf("selected port: %d, prio: %d\n", portid, prio);
 
         // pull from queue
         pkt = port_pop_tx(&ports[portid], prio);
@@ -252,19 +252,9 @@ uint16_t process_queue() {
 
         dprintf("There are pkt\n");
 
-        // DO cbs job
-        // struct credit_schedule* cbs_sch = map_get(cbs_schedules, from_i8(prio));
-        // if (cbs_sch != NULL) {
-        //     dprintf("This is cbs enabled queue\n");
-        //     // This is cbs scheduled queue.
-        //     size_t speed = 1000000000; // FIXME: use proper setting from NIC
-        //     int calculated_credits = (double)cbs_sch->send_slope / speed * PV_PACKET_PAYLOAD_LEN(pkt) * 8;
-        //     cbs_sch->current_credit =
-        //         minmax(cbs_sch->current_credit += calculated_credits, cbs_sch->low_credit, cbs_sch->high_credit);
-        //     dprintf("credit - %d = %d\n", calculated_credits, cbs_sch->current_credit);
-        // }
+        size_t pkt_bytes = PV_PACKET_PAYLOAD_LEN(pkt);
 
-        int sent = pv_nic_tx(pkt->nic_id, 0, pkt);
+        int sent = pv_nic_tx(portid, 0, pkt);
         if (sent == 0) {
             pv_packet_free(pkt);
             dprintf("NOT SENT!!!!!\n");
@@ -272,18 +262,18 @@ uint16_t process_queue() {
         count += sent;
 
         clock_gettime(CLOCK_REALTIME, &now);
-        // if (cbs_sch != NULL) { // Was cbs queue
-        //     cbs_sch->last_checked = now;
-        // }
+        if (sent > 0) {
+            spend_cbs_credit(&ports[portid], prio, pkt_bytes, &now);
+        }
     } while (timespec_compare(&until, &now) > 0);
 
     return count;
 }
 
-void select_queue(int prios, struct queue** selected_queue, int* selected_portid, int* selected_prio) {
+bool select_queue(int prios, int* selected_portid, int* selected_prio) {
 
-    struct queue* best_normal_queue = NULL;
-    struct queue* best_cbs_queue = NULL;
+    bool best_normal_queue = false;
+    bool best_cbs_queue = false;
 
     int best_credit = -1;
     int best_port = -1;
@@ -307,13 +297,17 @@ void select_queue(int prios, struct queue** selected_queue, int* selected_portid
 
                 if (queue_size > 0) {
                     if (cbs_credit != -1) {
-                        if (best_cbs_queue == NULL || cbs_credit > best_cbs_credit) {
+                        if (best_cbs_queue == false || cbs_credit > best_cbs_credit) {
+                            dprintf("Got cbs best: %d %d\n", portid, pri);
+                            best_cbs_queue = true;
                             best_cbs_credit = cbs_credit;
                             best_cbs_port = portid;
                             best_cbs_pri = pri;
                         }
                     } else {
-                        if (best_normal_queue == NULL || credit > best_credit) {
+                        if (best_normal_queue == false || credit > best_credit) {
+                            dprintf("Got normal best: %d %d\n", portid, pri);
+                            best_normal_queue = true;
                             best_credit = credit;
                             best_port = portid;
                             best_pri = pri;
@@ -327,10 +321,12 @@ void select_queue(int prios, struct queue** selected_queue, int* selected_portid
     if (best_cbs_queue) {
         *selected_portid = best_cbs_port;
         *selected_prio = best_cbs_pri;
-        *selected_queue = best_cbs_queue;
+        spend_credit(&ports[best_cbs_port], best_cbs_pri);
+        return best_cbs_queue;
     } else {
         *selected_portid = best_port;
         *selected_prio = best_pri;
-        *selected_queue = best_normal_queue;
+        spend_credit(&ports[best_port], best_pri);
+        return best_normal_queue;
     }
 }

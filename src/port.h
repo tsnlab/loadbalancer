@@ -16,13 +16,8 @@
  * BE(-1) => 0
  * prio(0) => 1
  */
-inline int prio_to_index(int prio) {
-    return prio + 1;
-}
-
-inline int index_to_prio(int index) {
-    return index - 1;
-}
+int prio_to_index(int prio);
+int index_to_prio(int index);
 
 struct port {
     struct pv_thread_lock lock;
@@ -52,9 +47,11 @@ struct queue {
 void ports_init(struct port* ports, size_t count);
 
 void calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit, const struct timespec* now);
+void spend_credit(struct port* port, int prio);
+void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct timespec* now);
 
 size_t port_queue_size(struct port* port, int prio);
 bool port_push_tx(struct port* port, int prio, struct pv_packet* pkt);
 struct pv_packet* port_pop_tx(struct port* port, int prio);
 
-bool port_is_tx_empty(struct port* port);
+// bool port_is_tx_empty(struct port* port);
