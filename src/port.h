@@ -46,7 +46,7 @@ struct queue {
 
 void ports_init(struct port* ports, size_t count);
 
-void calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit, const struct timespec* now);
+bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit, const struct timespec* now);
 void spend_credit(struct port* port, int prio);
 void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct timespec* now);
 

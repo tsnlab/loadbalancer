@@ -53,7 +53,7 @@ void ports_init(struct port* ports, size_t count) {
     }
 }
 
-void calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit, const struct timespec* now) {
+bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit, const struct timespec* now) {
     struct queue* queue = get_queue(port, prio);
     size_t queue_size = port_queue_size(port, prio);
 
@@ -77,8 +77,11 @@ void calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
             dprintf("credit + %d = %d\n", calculated_credits, queue->cbs_credits);
             pv_thread_lock_write_unlock(&queue->lock);
         }
+
+        return (queue->cbs_credits >= 0 && queue_size > 0);
     } else {
         *cbs_credit = -1;
+        return (queue_size > 0);
     }
 }
 
@@ -93,12 +96,17 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
         return;
     }
 
+    size_t queue_size = port_queue_size(port, prio);
+
     size_t speed = 1000000000; // FIXME: use proper setting from NIC
     int calculated_credits = (double)queue->send_slope / speed * pkt_size_byte * 8;
-    queue->cbs_credits = minmax(queue->cbs_credits += calculated_credits, queue->low_credit, queue->high_credit);
-    dprintf("credit - %d = %d\n", calculated_credits, queue->cbs_credits);
 
+    pv_thread_lock_write_lock(&queue->lock);
+    queue->cbs_credits =
+        minmax(queue->cbs_credits + calculated_credits, queue->low_credit, queue_size > 0 ? queue->high_credit : 0);
+    dprintf("credit - %d = %d\n", calculated_credits, queue->cbs_credits);
     queue->last_checked = *now;
+    pv_thread_lock_write_unlock(&queue->lock);
 }
 
 size_t port_queue_size(struct port* port, int prio) {

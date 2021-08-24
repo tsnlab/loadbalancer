@@ -82,6 +82,8 @@ void get_cbs_configs(struct credit_schedule* schedules) {
         printf("Prio: %d\n", prio);
         int index = prio_to_index(prio);
 
+        schedules[index].is_cbs = true;
+
         const int key_size = strlen(prefix) + 5 /* /-dd */ + strlen("/send") + 1;
         char subkey[key_size];
 

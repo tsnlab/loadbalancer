@@ -171,7 +171,8 @@ void process(struct pv_packet* pkt) {
 }
 
 void enqueue(struct pv_packet* pkt, int portid, int prio) {
-    if (port_queue_size(&ports[portid], prio) > MAX_QUEUE_SIZE) {
+    size_t queue_size = port_queue_size(&ports[portid], prio);
+    if (queue_size > MAX_QUEUE_SIZE) {
         dprintf("Drop pkt toport %d prio %d\n", portid, prio);
         pv_packet_free(pkt);
     } else {
@@ -204,6 +205,7 @@ struct schedule* get_current_schedule() {
     }
 
     // Never reach here
+    assert(false);
     return NULL;
 }
 
@@ -291,12 +293,10 @@ bool select_queue(int prios, int* selected_portid, int* selected_prio) {
             if (map_prio(pri) & prios) {
 
                 int credit, cbs_credit;
-                calculate_credits(&ports[portid], pri, &credit, &cbs_credit, &now);
+                bool usable = calculate_credits(&ports[portid], pri, &credit, &cbs_credit, &now);
 
-                size_t queue_size = port_queue_size(&ports[portid], pri);
-
-                if (queue_size > 0) {
-                    if (cbs_credit != -1) {
+                if (usable) {
+                    if (cbs_credit >= 0) {
                         if (best_cbs_queue == false || cbs_credit > best_cbs_credit) {
                             dprintf("Got cbs best: %d %d\n", portid, pri);
                             best_cbs_queue = true;
