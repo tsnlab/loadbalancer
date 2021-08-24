@@ -64,18 +64,16 @@ static int read_loop(void* _dummy) {
     struct pv_packet* pkts[64];
     const int max_pkts = sizeof(pkts) / sizeof(pkts[0]);
 
+    int portid = 0;
+
     while (running) {
-        uint16_t read_count_a = pv_nic_rx_burst(0, 0, pkts, max_pkts);
+        uint16_t read_count = pv_nic_rx_burst(portid, 0, pkts, max_pkts);
 
-        for (uint16_t i = 0; i < read_count_a; i++) {
+        for (uint16_t i = 0; i < read_count; i++) {
             process(pkts[i]);
         }
 
-        uint16_t read_count_b = pv_nic_rx_burst(1, 0, pkts, max_pkts);
-
-        for (uint16_t i = 0; i < read_count_b; i++) {
-            process(pkts[i]);
-        }
+        portid = (portid + 1) % port_count;
     }
 
     printf("Ending reader!\n");
