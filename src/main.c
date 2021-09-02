@@ -166,7 +166,7 @@ int find_port(struct pv_packet* pkt) {
 
     if (!map_has(cam, from_u64(smac))) {
         map_put(cam, from_u64(smac), from_i32(sport));
-        printf("Put smac %012lx into port %d\n", smac, sport);
+        dprintf("Put smac %012lx into port %d\n", smac, sport);
     }
 
     if (map_has(cam, from_u64(dmac))) {

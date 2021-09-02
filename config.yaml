@@ -6,13 +6,13 @@ memory:
 nics:
   - dev: enp3s0
     ipv6: fe80::2
-    rx_queue: 1024
-    tx_queue: 1024
+    rx_queue: 128
+    tx_queue: 128
     promisc: 1
   - dev: enp4s0
     ipv6: fe80::2
-    rx_queue: 1024
-    tx_queue: 1024
+    rx_queue: 128
+    tx_queue: 128
     promisc: 1
 
 loadbalancer:
@@ -26,7 +26,7 @@ loadbalancer:
         prios: [ -1 ]
     cbs:
         3:
-            high: 463
-            low: -8220
-            idle:  300000000
-            send: -700000000
+            high: 1080
+            low: -3504
+            idle:  700000000
+            send: -300000000

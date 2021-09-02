@@ -59,10 +59,7 @@ bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
 
     int calculated_credit =
         minmax(port->queue_credits[prio_to_index(prio)] + 1, port_queue_lowcredit, port_queue_highcredit);
-    pv_thread_lock_write_lock(&port->lock);
     port->queue_credits[prio_to_index(prio)] = calculated_credit;
-    pv_thread_lock_write_unlock(&port->lock);
-
     *credit = calculated_credit;
 
     if (queue->is_cbs) {
