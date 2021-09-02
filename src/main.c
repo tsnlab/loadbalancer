@@ -20,6 +20,7 @@
 
 #include "config.h"
 #include "port.h"
+#include "ptp.h"
 #include "timeutil.h"
 #include "utils.h"
 
@@ -186,6 +187,11 @@ void process(struct pv_packet* pkt) {
         prio = vlan->priority;
     } else {
         prio = -1;
+    }
+
+    if (ether->type == PV_ETH_TYPE_PTP) {
+        process_ptp(pkt);
+        return;
     }
 
     int portid = find_port(pkt);
