@@ -21,8 +21,10 @@ struct port_id {
 } __attribute__((packed, scalar_storage_order("big-endian")));
 
 struct ptp_header {
-    uint8_t msg_type;
-    uint8_t ver;
+    uint8_t transport_specific : 4;
+    uint8_t msg_type : 4;
+    uint8_t reserved0 : 4;
+    uint8_t ver : 4;
     uint16_t message_length;
     uint8_t domain_number;
     uint8_t reserved1;

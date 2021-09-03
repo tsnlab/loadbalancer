@@ -141,7 +141,7 @@ static void parse_followup(struct ptp_slave_data* ptp_data) {
     uint64_t macaddr = pv_nic_get_mac(ptp_data->portid);
 
     struct pv_packet* new_pkt = pv_packet_alloc();
-    size_t pkt_size = sizeof(struct ptp_message) + PV_ETH_HDR_LEN;
+    size_t pkt_size = sizeof(struct delay_req_msg) + PV_ETH_HDR_LEN;
     // FIXME: check boundary
     new_pkt->end = new_pkt->start + pkt_size;
 
