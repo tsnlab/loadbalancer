@@ -111,7 +111,7 @@ static void parse_sync(struct ptp_slave_data* ptp_data) {
         ptp_data->ptpset = 1;
     }
 
-    if (memcmp(&ptp_data->master_clock_id, &ptp_header->source_port_id.clock_id, sizeof(struct clock_id))) {
+    if (memcmp(&ptp_data->master_clock_id, &ptp_header->source_port_id.clock_id, sizeof(struct clock_id)) == 0) {
         if (ptp_data->ptpset == 1) {
             pv_nic_get_rx_timestamp(ptp_data->portid, &ptp_data->t2);
         }
