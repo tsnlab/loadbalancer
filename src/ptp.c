@@ -19,6 +19,7 @@
 #define PTP_TYPE_MANAGEMENT 0xD
 
 #define KERNEL_TIME_ADJUST_LIMIT 20000
+#define NS_PER_SEC 1000000000
 
 struct ptp_slave_data {
     struct pv_packet* pkt;
@@ -52,7 +53,7 @@ static void update_kernel_time();
 static int64_t calculate_delta(struct ptp_slave_data* ptp_data);
 
 static inline uint64_t timespec64_to_ns(const struct timespec* ts) {
-    return ((uint64_t)ts->tv_sec * 1000000000) + ts->tv_nsec;
+    return ((uint64_t)ts->tv_sec * NS_PER_SEC) + ts->tv_nsec;
 }
 
 static struct timeval ns_to_timeval(int64_t nsec) {
@@ -64,12 +65,12 @@ static struct timeval ns_to_timeval(int64_t nsec) {
         return t_eval;
     }
 
-    rem = nsec % 1000000000;
-    t_spec.tv_sec = nsec / 1000000000;
+    rem = nsec % NS_PER_SEC;
+    t_spec.tv_sec = nsec / NS_PER_SEC;
 
     if (rem < 0) {
         t_spec.tv_sec -= 1;
-        rem += 1000000000;
+        rem += NS_PER_SEC;
     }
 
     t_spec.tv_nsec = rem;
@@ -113,7 +114,13 @@ static void parse_sync(struct ptp_slave_data* ptp_data) {
 
     if (memcmp(&ptp_data->master_clock_id, &ptp_header->source_port_id.clock_id, sizeof(struct clock_id)) == 0) {
         if (ptp_data->ptpset == 1) {
-            pv_nic_get_rx_timestamp(ptp_data->portid, &ptp_data->t2);
+            ptp_data->t2.tv_sec = 0;
+            pv_nic_get_timestamp(ptp_data->portid, &ptp_data->t2);
+            bool res = pv_nic_get_rx_timestamp(ptp_data->portid, &ptp_data->t2);
+
+            if (res == false) {
+                // XXX: DPDK doesn't work
+            }
         }
     }
 
@@ -180,6 +187,9 @@ static void parse_followup(struct ptp_slave_data* ptp_data) {
 
     pv_nic_tx(ptp_data->portid, 0, new_pkt);
 
+    ptp_data->t3.tv_sec = 0;
+    pv_nic_get_timestamp(ptp_data->portid, &ptp_data->t3);
+
     int wait_us = 0;
     while (pv_nic_get_tx_timestamp(ptp_data->portid, &ptp_data->t3) != true && wait_us < 1000) {
         usleep(1);
@@ -207,6 +217,11 @@ static void parse_delay_response(struct ptp_slave_data* ptp_data) {
     ptp_data->t4.tv_nsec = rx_timestamp->ns;
     ptp_data->t4.tv_sec = ((uint64_t)rx_timestamp->sec_lsb) | ((uint64_t)rx_timestamp->sec_msb << 32);
 
+    // printf("t1 %ld.%09ld\n", ptp_data->t1.tv_sec, ptp_data->t1.tv_nsec);
+    // printf("t2 %ld.%09ld\n", ptp_data->t2.tv_sec, ptp_data->t2.tv_nsec);
+    // printf("t3 %ld.%09ld\n", ptp_data->t3.tv_sec, ptp_data->t3.tv_nsec);
+    // printf("t4 %ld.%09ld\n", ptp_data->t4.tv_sec, ptp_data->t4.tv_nsec);
+
     ptp_data->delta = calculate_delta(ptp_data);
     ptp_data->current_ptp_port = ptp_data->portid;
 
@@ -214,8 +229,23 @@ static void parse_delay_response(struct ptp_slave_data* ptp_data) {
 }
 
 static void sync_clock(struct ptp_slave_data* ptp_data) {
-    pv_nic_timesync_adjust_time(ptp_data->portid, ptp_data->delta);
+
+    if (ptp_data->delta > NS_PER_SEC || ptp_data->delta < -NS_PER_SEC) {
+        // printf("TOO FAR!!\n");
+        struct timespec now;
+        pv_nic_get_timestamp(ptp_data->portid, &now);
+        now.tv_sec += ptp_data->delta / NS_PER_SEC;
+        now.tv_nsec += ptp_data->delta % NS_PER_SEC;
+        pv_nic_set_timestamp(ptp_data->portid, &ptp_data->t4);
+    } else {
+        bool res = pv_nic_timesync_adjust_time(ptp_data->portid, ptp_data->delta);
+        if (res == false) {
+            // XXX: Failed to adjust time
+        }
+    }
+
     update_kernel_time();
+    // (void)update_kernel_time;
 }
 
 static void update_kernel_time() {
@@ -223,16 +253,27 @@ static void update_kernel_time() {
     struct timespec net_time, sys_time;
 
     clock_gettime(CLOCK_REALTIME, &sys_time);
-    pv_nic_get_timestamp(ptp_slave_data.current_ptp_port, &net_time);
+    bool res = pv_nic_get_timestamp(ptp_slave_data.current_ptp_port, &net_time);
 
-    nsec = (int64_t)timespec64_to_ns(&net_time) - (int64_t)timespec64_to_ns(&sys_time);
-    ptp_slave_data.new_adj = ns_to_timeval(nsec);
+    if (res) {
+        nsec = (int64_t)timespec64_to_ns(&net_time) - (int64_t)timespec64_to_ns(&sys_time);
+        ptp_slave_data.new_adj = ns_to_timeval(nsec);
+    } else {
+        // XXX: Set from kernel time
+        nsec = ptp_slave_data.delta;
+        net_time = ptp_slave_data.t4;
+        ptp_slave_data.new_adj = ns_to_timeval(nsec);
+    }
 
     if (nsec > KERNEL_TIME_ADJUST_LIMIT || nsec < -KERNEL_TIME_ADJUST_LIMIT) {
         clock_settime(CLOCK_REALTIME, &net_time);
     } else {
         adjtime(&ptp_slave_data.new_adj, 0);
     }
+
+    // printf("nettime: %ld.%09ld\n", net_time.tv_sec, net_time.tv_nsec);
+    // printf("systime: %ld.%09ld\n", sys_time.tv_sec, sys_time.tv_nsec);
+    // printf("nsec: %ld\n", nsec);
 }
 
 static int64_t calculate_delta(struct ptp_slave_data* ptp_data) {
@@ -247,7 +288,7 @@ static int64_t calculate_delta(struct ptp_slave_data* ptp_data) {
     t3 = timespec64_to_ns(&ptp_data->t3);
     t4 = timespec64_to_ns(&ptp_data->t4);
 
-    delta = ((int64_t)((t2 - t1) - (t4 - t3))) / 2;
+    delta = -((int64_t)((t2 - t1) - (t4 - t3))) / 2;
 
     return delta;
 }
