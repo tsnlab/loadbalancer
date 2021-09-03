@@ -161,16 +161,16 @@ static void parse_followup(struct ptp_slave_data* ptp_data) {
     new_msg->delay_req.hdr.domain_number = ptp_msg->header.domain_number;
 
     // Setup clock id
-    struct clock_id* client_clkid = &ptp_msg->delay_req.hdr.source_port_id.clock_id;
-    client_clkid->id[0] = (macaddr >> (8 * 5)) & 0xff;
-    client_clkid->id[1] = (macaddr >> (8 * 4)) & 0xff;
-    client_clkid->id[2] = (macaddr >> (8 * 3)) & 0xff;
-    client_clkid->id[3] = 0xff;
-    client_clkid->id[4] = 0xfe;
-    client_clkid->id[5] = (macaddr >> (8 * 2)) & 0xff;
-    client_clkid->id[6] = (macaddr >> (8 * 1)) & 0xff;
-    client_clkid->id[7] = (macaddr >> (8 * 0)) & 0xff;
-    memcpy(&ptp_data->client_clock_id, client_clkid, sizeof(struct clock_id));
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[0] = (macaddr >> (8 * 5)) & 0xff;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[1] = (macaddr >> (8 * 4)) & 0xff;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[2] = (macaddr >> (8 * 3)) & 0xff;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[3] = 0xff;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[4] = 0xfe;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[5] = (macaddr >> (8 * 2)) & 0xff;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[6] = (macaddr >> (8 * 1)) & 0xff;
+    new_msg->delay_req.hdr.source_port_id.clock_id.id[7] = (macaddr >> (8 * 0)) & 0xff;
+
+    memcpy(&ptp_data->client_clock_id, &new_msg->delay_req.hdr.source_port_id.clock_id, sizeof(struct clock_id));
 
     // set TX_IEEE1588_TMST offload flag;
     pv_packet_set_offloads(new_pkt, PV_PKT_OFFLOAD_TX_TIMESTAMP);
