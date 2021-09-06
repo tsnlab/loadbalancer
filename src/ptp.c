@@ -18,8 +18,9 @@
 #define PTP_TYPE_SIGNALING 0xC
 #define PTP_TYPE_MANAGEMENT 0xD
 
-#define KERNEL_TIME_ADJUST_LIMIT 2000000
 #define NS_PER_SEC 1000000000
+#define KERNEL_TIME_ADJUST_LIMIT (NS_PER_SEC / 4)
+#define NEW_MASTER_THRESHOLD_SEC 4
 
 struct ptp_slave_data {
     struct timespec t1;
@@ -115,7 +116,7 @@ static void process_sync(struct ptp_slave_data* ptp_data, struct pv_packet* pkt)
     } else {
         struct timespec now;
         clock_gettime(CLOCK_REALTIME, &now);
-        if (now.tv_sec - ptp_data->t2.tv_sec > 10) {
+        if (now.tv_sec - ptp_data->t2.tv_sec > NEW_MASTER_THRESHOLD_SEC) {
             memcpy(&ptp_data->master_clock_id, &ptp_header->source_port_id.clock_id, sizeof(struct clock_id));
         }
     }
@@ -140,7 +141,6 @@ static void process_followup(struct ptp_slave_data* ptp_data, struct pv_packet* 
     if (ptp_msg->header.seq_id != ptp_data->seqid_sync) {
         return;
     }
-
 }
 
 static void process_delay_request(struct ptp_slave_data* ptp_data, struct pv_packet* pkt) {
@@ -198,9 +198,9 @@ static void sync_clock(struct ptp_slave_data* ptp_data) {
             now.tv_nsec -= NS_PER_SEC;
         }
         // printf("Set time as %010ld.%09ld\n", now.tv_sec, now.tv_nsec);
-        // clock_settime(CLOCK_REALTIME, &now);
+        clock_settime(CLOCK_REALTIME, &now);
         // printf("Set time as %010ld.%09ld\n", ptp_data->t4.tv_sec, ptp_data->t4.tv_nsec);
-        clock_settime(CLOCK_REALTIME, &ptp_data->t4);
+        // clock_settime(CLOCK_REALTIME, &ptp_data->t4);
     } else {
         ptp_data->new_adj = ns_to_timeval(ptp_data->delta);
         adjtime(&ptp_data->new_adj, 0);
