@@ -191,7 +191,6 @@ void process(struct pv_packet* pkt) {
 
     if (ether->type == PV_ETH_TYPE_PTP) {
         process_ptp(pkt);
-        return;
     }
 
     int portid = find_port(pkt);
