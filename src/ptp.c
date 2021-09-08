@@ -3,6 +3,7 @@
 
 #include "ptp.h"
 #include <sys/time.h>
+#include <sys/timex.h>
 
 #include <string.h>
 #include <unistd.h>
@@ -206,8 +207,17 @@ static void sync_clock(struct ptp_slave_data* ptp_data) {
         // dprintf("Set time as %010ld.%09ld\n", ptp_data->t4.tv_sec, ptp_data->t4.tv_nsec);
         // clock_settime(CLOCK_REALTIME, &ptp_data->t4);
     } else {
-        ptp_data->new_adj = ns_to_timeval(ptp_data->delta);
-        adjtime(&ptp_data->new_adj, 0);
+        struct timex tx;
+        memset(&tx, 0, sizeof(tx));
+        tx.modes = ADJ_SETOFFSET | ADJ_NANO;
+        tx.time.tv_sec = ptp_data->delta / NS_PER_SEC;
+        tx.time.tv_usec = ptp_data->delta % NS_PER_SEC; // usec but nsec. lol
+        if (tx.time.tv_usec < 0) {
+            tx.time.tv_sec -= 1;
+            tx.time.tv_usec += NS_PER_SEC;
+            (void)ns_to_timeval;
+        }
+        adjtimex(&tx);
     }
 }
 
