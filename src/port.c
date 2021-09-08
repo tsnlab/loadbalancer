@@ -27,6 +27,9 @@ void ports_init(struct port* ports, size_t count) {
     get_cbs_configs(cbs_schedules);
 
     for (int i = 0; i < count; i += 1) {
+        ports[i].highest_queue.pkts = list_create(NULL);
+        pv_thread_lock_init(&ports[i].highest_queue.lock);
+
         ports[i].prio_queues = map_create(PRIO_RANGE + 1, int16_hash, NULL);
         assert(ports[i].prio_queues != NULL);
 
@@ -91,6 +94,10 @@ void spend_credit(struct port* port, int prio) {
 }
 
 void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct timespec* now) {
+    if (prio == PRIO_HIGHEST) {
+        return;
+    }
+
     struct queue* queue = get_queue(port, prio);
     if (!queue->is_cbs) {
         return;
@@ -110,31 +117,53 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
 }
 
 size_t port_queue_size(struct port* port, int prio) {
+    size_t res;
+
+    if (prio == PRIO_HIGHEST) {
+        pv_thread_lock_read_lock(&port->highest_queue.lock);
+        res = list_size(port->highest_queue.pkts);
+        pv_thread_lock_read_unlock(&port->highest_queue.lock);
+
+        return res;
+    }
+
     struct queue* queue = get_queue(port, prio);
     pv_thread_lock_read_lock(&queue->lock);
-    size_t res = list_size(queue->pkts);
+    res = list_size(queue->pkts);
     pv_thread_lock_read_unlock(&queue->lock);
     return res;
 }
 
 bool port_push_tx(struct port* port, int prio, struct pv_packet* pkt) {
-    struct queue* queue = get_queue(port, prio);
-    pv_thread_lock_write_lock(&queue->lock);
-    bool res = list_add(queue->pkts, pkt);
-    pv_thread_lock_write_unlock(&queue->lock);
+    bool res;
 
-    if (res == false) {
-        return false;
+    if (prio == PRIO_HIGHEST) {
+        pv_thread_lock_write_lock(&port->highest_queue.lock);
+        res = list_add(port->highest_queue.pkts, pkt);
+        pv_thread_lock_write_unlock(&port->highest_queue.lock);
+    } else {
+        struct queue* queue = get_queue(port, prio);
+        pv_thread_lock_write_lock(&queue->lock);
+        res = list_add(queue->pkts, pkt);
+        pv_thread_lock_write_unlock(&queue->lock);
     }
 
-    return true;
+    return res;
 }
 
 struct pv_packet* port_pop_tx(struct port* port, int prio) {
-    struct queue* queue = get_queue(port, prio);
+    struct pv_packet* pkt = NULL;
+    if (prio == PRIO_HIGHEST) {
+        pv_thread_lock_write_lock(&port->highest_queue.lock);
+        pkt = (struct pv_packet*)list_remove_at(port->highest_queue.pkts, 0);
+        pv_thread_lock_write_unlock(&port->highest_queue.lock);
+    } else {
+        struct queue* queue = get_queue(port, prio);
 
-    pv_thread_lock_write_lock(&queue->lock);
-    struct pv_packet* pkt = (struct pv_packet*)list_remove_at(queue->pkts, 0);
-    pv_thread_lock_write_unlock(&queue->lock);
+        pv_thread_lock_write_lock(&queue->lock);
+        pkt = (struct pv_packet*)list_remove_at(queue->pkts, 0);
+        pv_thread_lock_write_unlock(&queue->lock);
+    }
+
     return pkt;
 }

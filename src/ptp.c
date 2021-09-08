@@ -186,7 +186,7 @@ static void process_delay_response(struct ptp_slave_data* ptp_data, struct pv_pa
 }
 
 static void sync_clock(struct ptp_slave_data* ptp_data) {
-    dprintf("Sync clock! delta: %+09ld\n", ptp_data->delta);
+    dprintf("Sync clock! delta: %+010ld\n", ptp_data->delta);
 
     if (ptp_data->delta > KERNEL_TIME_ADJUST_LIMIT || ptp_data->delta < -KERNEL_TIME_ADJUST_LIMIT) {
         dprintf("TOO FAR!!\n");

@@ -191,6 +191,7 @@ void process(struct pv_packet* pkt) {
 
     if (ether->type == PV_ETH_TYPE_PTP) {
         process_ptp(pkt);
+        prio = PRIO_HIGHEST;
     }
 
     int portid = find_port(pkt);
@@ -327,6 +328,14 @@ bool select_queue(int prios, int* selected_portid, int* selected_prio) {
     clock_gettime(CLOCK_REALTIME, &now);
 
     for (int portid = 0; portid < port_count; portid += 1) {
+        // highest prio
+
+        if (port_queue_size(&ports[portid], PRIO_HIGHEST) > 0) {
+            *selected_portid = portid;
+            *selected_prio = PRIO_HIGHEST;
+            return true;
+        }
+
         for (int pri = -1; pri < PRIO_RANGE; pri += 1) {
             if (map_prio(pri) & prios) {
 

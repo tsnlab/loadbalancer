@@ -8,6 +8,7 @@
 
 #define PRIO_RANGE 0x8
 #define PRIOS_ALL (~0)
+#define PRIO_HIGHEST -2
 
 #define port_queue_lowcredit -5
 #define port_queue_highcredit 10
@@ -18,14 +19,6 @@
  */
 int prio_to_index(int prio);
 int index_to_prio(int index);
-
-struct port {
-    struct pv_thread_lock lock;
-    // map<prio: int, queue: struct queue>
-    struct map* prio_queues;
-    // Not cbs, just prevent starvation.
-    int queue_credits[PRIO_RANGE + 1];
-};
 
 struct queue {
     struct pv_thread_lock lock;
@@ -40,6 +33,20 @@ struct queue {
 
     int32_t cbs_credits;
     struct timespec last_checked;
+};
+
+struct highest_queue {
+    struct pv_thread_lock lock;
+    struct list* pkts;
+};
+
+struct port {
+    struct pv_thread_lock lock;
+    // map<prio: int, queue: struct queue>
+    struct map* prio_queues;
+    struct highest_queue highest_queue;
+    // Not cbs, just prevent starvation.
+    int queue_credits[PRIO_RANGE + 1];
 };
 
 void ports_init(struct port* ports, size_t count);
