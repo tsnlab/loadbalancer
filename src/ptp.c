@@ -152,8 +152,8 @@ static void process_delay_request(struct ptp_slave_data* ptp_data, struct pv_pac
 
     ptp_data->seqid_delay_req = ptp_msg->header.seq_id;
 
-    clock_gettime(CLOCK_TAI, &ptp_data->t3);
     memcpy(&ptp_data->client_clock_id, &ptp_msg->header.source_port_id.clock_id, sizeof(struct clock_id));
+    clock_gettime(CLOCK_TAI, &ptp_data->t3);
 }
 
 static void process_delay_response(struct ptp_slave_data* ptp_data, struct pv_packet* pkt) {

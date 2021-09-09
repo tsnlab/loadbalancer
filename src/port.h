@@ -26,12 +26,12 @@ struct queue {
     struct list* pkts;
 
     bool is_cbs;
-    int32_t high_credit;
-    int32_t low_credit;
-    int32_t send_slope;
-    int32_t idle_slope;
+    int64_t high_credit;
+    int64_t low_credit;
+    int64_t send_slope;
+    int64_t idle_slope;
 
-    int32_t cbs_credits;
+    int64_t cbs_credits;
     struct timespec last_checked;
 };
 

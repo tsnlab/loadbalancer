@@ -108,12 +108,17 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
 
     size_t speed = 1000000000; // FIXME: use proper setting from NIC
     int calculated_credits = (double)queue->send_slope / speed * pkt_size_byte * 8;
+    uint64_t est_time_ns = (double)pkt_size_byte * 8 * 1000000000 / speed;
 
     pv_thread_lock_write_lock(&queue->lock);
     queue->cbs_credits =
         minmax(queue->cbs_credits + calculated_credits, queue->low_credit, queue_size > 0 ? queue->high_credit : 0);
-    dprintf("credit - %d = %d\n", calculated_credits, queue->cbs_credits);
-    queue->last_checked = *now;
+    dprintf("credit - %ld = %ld\n", calculated_credits, queue->cbs_credits);
+
+    struct timespec est_end = *now;
+    est_end.tv_sec += est_time_ns / 1000000000;
+    est_end.tv_nsec += est_time_ns % 1000000000;
+    queue->last_checked = est_end;
     pv_thread_lock_write_unlock(&queue->lock);
 }
 

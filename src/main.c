@@ -44,7 +44,7 @@ int find_port(struct pv_packet* pkt);
 void process(struct pv_packet* pkt);
 void enqueue(struct pv_packet* pkt, int portid, int prio);
 
-struct schedule* get_current_schedule();
+struct schedule* get_current_schedule(struct timespec* now);
 uint16_t process_queue();
 
 bool select_queue(int prios, int* selected_portid, int* selected_prio);
@@ -220,16 +220,14 @@ void enqueue(struct pv_packet* pkt, int portid, int prio) {
     }
 }
 
-struct schedule* get_current_schedule() {
-    struct timespec now;
-
+struct schedule* get_current_schedule(struct timespec* now) {
     if (schedules_size == 0) {
         return NULL;
     }
 
-    clock_gettime(CLOCK_REALTIME, &now);
+    clock_gettime(CLOCK_REALTIME, now);
 
-    uint64_t now_u = now.tv_sec * 1000000000 + now.tv_nsec;
+    uint64_t now_u = now->tv_sec * 1000000000 + now->tv_nsec;
     uint64_t mod = now_u % total_window;
 
     int sum = 0;
@@ -237,7 +235,7 @@ struct schedule* get_current_schedule() {
         struct schedule* sch = &schedules[i];
         sum += sch->window;
         if (sum > mod) {
-            sch->until.tv_sec = now.tv_sec;
+            sch->until.tv_sec = now->tv_sec;
             sch->until.tv_nsec += sum - mod; // FIXME: use tv_sec also.
             return sch;
         }
@@ -250,15 +248,14 @@ struct schedule* get_current_schedule() {
 
 uint16_t process_queue() {
     uint16_t count = 0;
-    const struct schedule* current_schedule = get_current_schedule();
     struct timespec now;
+    const struct schedule* current_schedule = get_current_schedule(&now);
 
     struct timespec until;
     if (current_schedule != NULL) {
         until = current_schedule->until;
     } else {
         // There is no TAS
-        clock_gettime(CLOCK_REALTIME, &now);
         until = now;
         until.tv_nsec += 500000;
         if (until.tv_nsec >= 1000000000) {
@@ -294,6 +291,7 @@ uint16_t process_queue() {
         dprintf("There are pkt\n");
 
         size_t pkt_bytes = PV_PACKET_PAYLOAD_LEN(pkt);
+        spend_cbs_credit(&ports[portid], prio, pkt_bytes, &now);
 
         int sent = pv_nic_tx(portid, 0, pkt);
         if (sent == 0) {
@@ -303,9 +301,7 @@ uint16_t process_queue() {
         count += sent;
 
         clock_gettime(CLOCK_REALTIME, &now);
-        if (sent > 0) {
-            spend_cbs_credit(&ports[portid], prio, pkt_bytes, &now);
-        }
+        // spend_cbs_credit(&ports[portid], prio, pkt_bytes, &now);
     } while (timespec_compare(&until, &now) > 0);
 
     return count;
