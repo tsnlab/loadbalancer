@@ -77,6 +77,7 @@ bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
                                         queue->low_credit,
                                         queue_size > 0 ? queue->high_credit : 0);
             queue->last_checked = *now;
+            *cbs_credit = queue->cbs_credits;
             dprintf("credit + %d = %d\n", calculated_credits, queue->cbs_credits);
             pv_thread_lock_write_unlock(&queue->lock);
         }

@@ -288,7 +288,7 @@ uint16_t process_queue() {
 
         if (pkt == NULL) {
             dprintf("Impossible, maybe concurrent error\n");
-            break;
+            continue;
         }
 
         dprintf("There are pkt\n");
