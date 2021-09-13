@@ -78,7 +78,7 @@ bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
                                         queue_size > 0 ? queue->high_credit : 0);
             queue->last_checked = *now;
             *cbs_credit = queue->cbs_credits;
-            dprintf("credit + %d = %d\n", calculated_credits, queue->cbs_credits);
+            dprintf("credit + %d = %ld\n", calculated_credits, queue->cbs_credits);
             pv_thread_lock_write_unlock(&queue->lock);
         }
 
@@ -113,7 +113,7 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
     pv_thread_lock_write_lock(&queue->lock);
     queue->cbs_credits =
         minmax(queue->cbs_credits + calculated_credits, queue->low_credit, queue_size > 0 ? queue->high_credit : 0);
-    dprintf("credit - %ld = %ld\n", calculated_credits, queue->cbs_credits);
+    dprintf("credit - %d = %ld\n", calculated_credits, queue->cbs_credits);
 
     struct timespec est_end = *now;
     est_end.tv_sec += est_time_ns / 1000000000;
