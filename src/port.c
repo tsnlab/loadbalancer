@@ -67,9 +67,12 @@ bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
 
     if (queue->is_cbs) {
         struct timespec diff;
+        if (timespec_compare(&queue->last_checked, now) > 0) {
+            return false;
+        }
         timespec_diff(&queue->last_checked, now, &diff);
 
-        int calculated_credits = (queue->idle_slope * (diff.tv_sec + ((double)diff.tv_nsec / 1000000000)));
+        int64_t calculated_credits = (queue->idle_slope * (diff.tv_sec + ((double)diff.tv_nsec / 1000000000)));
         // Don't increase credit until reaches 0. because of inaccuracy of integer
         if (queue->cbs_credits + calculated_credits >= 0) {
             pv_thread_lock_write_lock(&queue->lock);
@@ -78,11 +81,11 @@ bool calculate_credits(struct port* port, int prio, int* credit, int* cbs_credit
                                         queue_size > 0 ? queue->high_credit : 0);
             queue->last_checked = *now;
             *cbs_credit = queue->cbs_credits;
-            dprintf("credit + %d = %ld\n", calculated_credits, queue->cbs_credits);
+            dprintf("credit + %ld = %ld\n", calculated_credits, queue->cbs_credits);
             pv_thread_lock_write_unlock(&queue->lock);
         }
 
-        return (queue->cbs_credits >= 0 && queue_size > 0);
+        return (*cbs_credit >= 0 && queue_size > 0);
     } else {
         *cbs_credit = -1;
         return (queue_size > 0);
@@ -107,18 +110,21 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
     size_t queue_size = port_queue_size(port, prio);
 
     size_t speed = 1000000000; // FIXME: use proper setting from NIC
-    int calculated_credits = (double)queue->send_slope / speed * pkt_size_byte * 8;
+    int64_t calculated_credits = (double)queue->send_slope / speed * pkt_size_byte * 8;
     uint64_t est_time_ns = (double)pkt_size_byte * 8 * 1000000000 / speed;
 
     pv_thread_lock_write_lock(&queue->lock);
     queue->cbs_credits =
         minmax(queue->cbs_credits + calculated_credits, queue->low_credit, queue_size > 0 ? queue->high_credit : 0);
-    dprintf("credit - %d = %ld\n", calculated_credits, queue->cbs_credits);
+    dprintf("credit - %ld = %ld\n", calculated_credits, queue->cbs_credits);
 
     struct timespec est_end = *now;
-    est_end.tv_sec += est_time_ns / 1000000000;
-    est_end.tv_nsec += est_time_ns % 1000000000;
+    est_end.tv_nsec += est_time_ns;
     queue->last_checked = est_end;
+    if (queue->last_checked.tv_nsec >= 1000000000) {
+        queue->last_checked.tv_sec += queue->last_checked.tv_nsec / 1000000000;
+        queue->last_checked.tv_nsec %= 1000000000;
+    }
     pv_thread_lock_write_unlock(&queue->lock);
 }
 
