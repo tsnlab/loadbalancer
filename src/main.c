@@ -281,7 +281,7 @@ uint16_t process_queue() {
         dprintf("selected port: %d, prio: %d\n", portid, prio);
 
         // pull from queue
-        pkt = port_pop_tx(&ports[portid], prio);
+        pkt = port_peek_tx(&ports[portid], prio);
 
         if (pkt == NULL) {
             dprintf("Impossible, maybe concurrent error\n");
@@ -291,12 +291,15 @@ uint16_t process_queue() {
         dprintf("There are pkt\n");
 
         size_t pkt_bytes = PV_PACKET_PAYLOAD_LEN(pkt);
-        spend_cbs_credit(&ports[portid], prio, pkt_bytes, &now);
 
         int sent = pv_nic_tx(portid, 0, pkt);
         if (sent == 0) {
             pv_packet_free(pkt);
             dprintf("NOT SENT!!!!!\n");
+        } else {
+            spend_credit(&ports[portid], prio);
+            spend_cbs_credit(&ports[portid], prio, pkt_bytes, &now);
+            port_pop_tx(&ports[portid], prio);
         }
         count += sent;
 
@@ -364,12 +367,10 @@ bool select_queue(int prios, int* selected_portid, int* selected_prio) {
     if (best_cbs_queue) {
         *selected_portid = best_cbs_port;
         *selected_prio = best_cbs_pri;
-        spend_credit(&ports[best_cbs_port], best_cbs_pri);
         return best_cbs_queue;
     } else if (best_normal_queue) {
         *selected_portid = best_port;
         *selected_prio = best_pri;
-        spend_credit(&ports[best_port], best_pri);
         return best_normal_queue;
     }
 

@@ -57,6 +57,7 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
 
 size_t port_queue_size(struct port* port, int prio);
 bool port_push_tx(struct port* port, int prio, struct pv_packet* pkt);
+struct pv_packet* port_peek_tx(struct port* port, int prio);
 struct pv_packet* port_pop_tx(struct port* port, int prio);
 
 // bool port_is_tx_empty(struct port* port);

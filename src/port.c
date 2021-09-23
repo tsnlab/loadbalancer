@@ -111,20 +111,21 @@ void spend_cbs_credit(struct port* port, int prio, size_t pkt_size_byte, struct 
 
     size_t speed = 1000000000; // FIXME: use proper setting from NIC
     int64_t calculated_credits = (double)queue->send_slope / speed * pkt_size_byte * 8;
-    uint64_t est_time_ns = (double)pkt_size_byte * 8 * 1000000000 / speed;
+    // uint64_t est_time_ns = (double)pkt_size_byte * 8 * 1000000000 / speed;
 
     pv_thread_lock_write_lock(&queue->lock);
     queue->cbs_credits =
         minmax(queue->cbs_credits + calculated_credits, queue->low_credit, queue_size > 0 ? queue->high_credit : 0);
     dprintf("credit - %ld = %ld\n", calculated_credits, queue->cbs_credits);
 
-    struct timespec est_end = *now;
-    est_end.tv_nsec += est_time_ns;
-    queue->last_checked = est_end;
-    if (queue->last_checked.tv_nsec >= 1000000000) {
-        queue->last_checked.tv_sec += queue->last_checked.tv_nsec / 1000000000;
-        queue->last_checked.tv_nsec %= 1000000000;
-    }
+    // struct timespec est_end = *now;
+    // est_end.tv_nsec += est_time_ns;
+    // queue->last_checked = est_end;
+    // if (queue->last_checked.tv_nsec >= 1000000000) {
+    //     queue->last_checked.tv_sec += queue->last_checked.tv_nsec / 1000000000;
+    //     queue->last_checked.tv_nsec %= 1000000000;
+    // }
+    queue->last_checked = *now;
     pv_thread_lock_write_unlock(&queue->lock);
 }
 
@@ -161,6 +162,23 @@ bool port_push_tx(struct port* port, int prio, struct pv_packet* pkt) {
     }
 
     return res;
+}
+
+struct pv_packet* port_peek_tx(struct port* port, int prio) {
+    struct pv_packet* pkt = NULL;
+    if (prio == PRIO_HIGHEST) {
+        pv_thread_lock_read_lock(&port->highest_queue.lock);
+        pkt = (struct pv_packet*)list_get(port->highest_queue.pkts, 0);
+        pv_thread_lock_read_unlock(&port->highest_queue.lock);
+    } else {
+        struct queue* queue = get_queue(port, prio);
+
+        pv_thread_lock_read_lock(&queue->lock);
+        pkt = (struct pv_packet*)list_get(queue->pkts, 0);
+        pv_thread_lock_read_unlock(&queue->lock);
+    }
+
+    return pkt;
 }
 
 struct pv_packet* port_pop_tx(struct port* port, int prio) {
